@@ -1,10 +1,61 @@
-# Evidence Atlas
+# TrialTrace
 
-Trace the provenance of clinical evidence. Link registered trials to the papers
-that report them, compare what was planned against what was published, and
-follow a retracted result through the citation network.
+**The effect sizes people use to design clinical trials come from published
+literature — but published literature is missing some of the trials that were
+registered and completed.**
+
+TrialTrace links the trial registry to the scholarly record, measures that gap,
+and shows what it does to a trial design. The same graph also powers retraction
+propagation and reviewer-conflict analysis.
 
 Full product specification: [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+
+---
+
+## The result, on real data
+
+400 completed phase II/III non-small-cell lung cancer trials with posted
+registry results, progression-free survival:
+
+```
+                                    linked to a publication
+  statistically significant                92%   (n=39)
+  not significant                          62%   (n=45)
+
+  favours treatment                        85%   (n=61)
+  favours control                          52%   (n=23)
+```
+
+Trials that worked are far more likely to be findable in the literature. That
+shifts the pooled effect estimate:
+
+```
+  PRIOR                     HR          95% CI      TRIALS
+  Literature-only        0.761   (0.712, 0.814)         64
+  Registry-aware         0.796   (0.752, 0.843)         84
+```
+
+And that shift has a design consequence:
+
+```
+  BASIS                            HR    EVENTS   POWER DELIVERED
+  Your assumption                0.65       170               80%
+  Published-literature estimate  0.76       422               43%
+  Registry-aware estimate        0.80       606               32%
+```
+
+Leave-one-out back-test over the 84 trials with usable hazard ratios:
+
+```
+  MODEL                  COVERAGE   MAE log(HR)     BIAS
+  Literature-only             81%         0.278   -0.036
+  Registry-aware              79%         0.267   +0.010
+```
+
+Both models are well calibrated. The difference is in **bias**: the
+literature-only model systematically predicts a stronger effect than held-out
+trials actually delivered, while the registry-aware model is close to unbiased.
+That direction is exactly what publication selection predicts.
 
 ---
 
@@ -13,17 +64,34 @@ Full product specification: [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
 ```sh
 python3 -m venv venv
 venv/bin/python -m pip install -r requirements.txt
-venv/bin/python main.py
 ```
 
-Open http://127.0.0.1:8000. The app starts with the bundled real-data snapshot
-and works without API access in saved-demo mode. Use `--port 8001` if 8000 is
-occupied.
+### Hero feature — bias-aware trial design
 
-Live lookups need outbound access to OpenAlex, Crossref, ClinicalTrials.gov and
-PubMed. Optional environment variables are documented in [.env.example](.env.example);
-`.env` files are not loaded automatically. Responses are cached under `.cache/`,
-so a second lookup is instant and a demo does not depend on a live network.
+```sh
+venv/bin/python cli.py design --condition "non-small cell lung cancer" \
+    --endpoint pfs --hr 0.65 --power 0.80
+```
+
+First run builds the cohort from live APIs and takes about 4 minutes; every
+response is cached, so later runs are seconds. `--save` writes the cohort to
+`data/cohorts/`.
+
+### Research integrity — retraction blast radius
+
+```sh
+venv/bin/python main.py       # then open http://127.0.0.1:8000
+```
+
+Enter a DOI, get a sampled citation network with source-linked retraction
+evidence and a shortest path from any paper back to the retracted work.
+
+### Reviewer conflict check
+
+```sh
+venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
+    --authors "Tony Mok" --max-hops 2 --since-year 2020
+```
 
 ### Tests
 
@@ -31,166 +99,156 @@ so a second lookup is instant and a demo does not depend on a live network.
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-30 tests, all offline. Citation-graph logic is tested against mocks; the
-trial-comparison pipeline runs on saved API payloads in [tests/fixtures/](tests/fixtures/).
-An upstream outage cannot break the suite.
+63 tests, all offline. The statistics are checked against closed-form values
+(Schoenfeld event counts, DerSimonian-Laird pooling) and against synthetic data
+with a known answer, so a regression in the maths fails a test rather than
+producing a plausible-looking number.
 
 ---
 
-## What is here
-
-Two capabilities over one provenance graph.
-
-### 1. Citation propagation and retraction tracking — web UI
-
-Enter a DOI, get a sampled citation network, and follow source-linked retraction
-evidence. Select any paper to see a shortest citation path back to a retracted
-work, one clickable step at a time.
-
-The saved sample starts at `10.1177/1758835920922055` — a real retracted
-osteosarcoma paper — with real OpenAlex citation edges and a Crossref notice at
-`10.1177/17588359231172420`. All counts describe that bounded sample, not the
-whole literature.
-
-Refresh the snapshot before presenting, with internet access:
-
-```sh
-venv/bin/python capture_demo.py
-```
-
-The script refuses to replace the snapshot if the starting paper's retraction
-cannot be confirmed.
-
-### 2. Registered trial vs published paper — CLI and API
-
-```sh
-# A trial and every publication the registry links to it, ranked by how much
-# of the registered trial each one actually reports.
-venv/bin/python cli.py trial NCT02142738
-
-# Start from a paper and find the trial behind it.
-venv/bin/python cli.py paper 27718847
-
-# Compare one pair, and show why the two records were linked.
-venv/bin/python cli.py compare NCT02506153 36416836 --evidence
-```
+## How the pipeline works
 
 ```
-FIELD                                    REGISTERED        PUBLISHED
-Registry identifier                      NCT02506153       NCT02506153    match
-Enrollment                               1301 (actual)     1303           DIFFERENCE
-Interventions                            Biospecimen Col…  Described      match
-Masking                                  DOUBLE            --             not identified
-Primary outcome: Overall Survival (OS)   Overall Surviva…  --             not identified
+ClinicalTrials.gov ──► cohort ──► posted results (hazard ratios)
+                          │
+                          ├──► publication linkage ──► PubMed ──► OpenAlex
+                          │        3 channels                     (graph)
+                          ▼
+              A / B / C categories
+                          │
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+  literature-only   registry-aware    sensitivity for
+      prior             prior          unknown results
+        └─────────────────┼─────────────────┘
+                          ▼
+              power / sample size  ──►  leave-one-out back-test
 ```
 
-Each row comes from an explicit rule over registry fields and the publication's
-structured abstract, and carries the source spans it was derived from.
+### Linking trials to publications
 
----
+Three channels, most authoritative first, because a false "unpublished" verdict
+is the most damaging error this system can make:
 
-## HTTP API
+1. `nct_registry_reference` — the registry lists a PMID.
+2. `nct_pubmed_si` — PubMed indexes the NCT id as a secondary source id. This
+   catches publications the registry never listed.
+3. `fuzzy` — deterministic metadata scoring (investigator overlap, intervention,
+   condition, enrollment, dates, sponsor), used only when neither identifier
+   channel returns anything.
 
-| Endpoint | Returns |
+A trial with no link from any channel is reported as **"no publication
+identified"**, never as "unpublished".
+
+### The three categories
+
+| | |
 |---|---|
-| `GET /api/demo` | The bundled citation-graph snapshot |
-| `GET /api/graph?doi=&depth=1\|2` | A live citation graph with retraction evidence |
-| `GET /api/trial?nct=&limit=` | A trial and its ranked publications |
-| `GET /api/paper?pmid=` | A publication and its candidate trials |
-| `GET /api/compare?nct=&pmid=` | The full field-by-field comparison table |
+| **A** | publication identified + registry result — what the literature shows |
+| **B** | registry result, no publication identified — **the observable gap** |
+| **C** | neither — genuinely unknown, handled by sensitivity analysis only |
 
-The trial endpoints and the CLI are built from the same records in
-[backend/report.py](backend/report.py), so the two surfaces cannot drift.
+A vs B is an observable test of publication selection. C is never imputed to
+null; instead an explicit assumption is swept across a range and the conclusion
+is reported at each point.
 
 ---
 
 ## Design rules
 
-- **Deterministic code for facts.** Graph paths, distances and comparison rows
-  are computed, not generated. No LLM is used anywhere yet; when one is added it
-  is for extraction and explanation only.
-- **A citation is not a verdict.** A paper may cite a retracted work in order to
-  criticise it. The UI shows connections and says so in as many words.
-- **Absence of evidence is not evidence of absence.** Crossref returning no
-  notice yields `no_notice_found`, never `not_retracted`; a truncated result set
-  downgrades to `unknown` rather than reporting a false negative. Comparison
-  evidence comes from abstracts, so `not identified` never means "absent from
-  the paper", and the output states that.
-- **Differences are differences.** The comparison vocabulary is `match`,
-  `difference`, `not identified`, `not registered`, `not comparable`. Nothing
-  here calls a discrepancy misconduct — enrollment counts routinely differ
-  between enrolled, eligible and analyzed populations.
-- **Extracted facts and inferred links never blur.** A trial-paper match carries
-  `basis: identifier` when a source declares the link and `basis: inferred` when
-  it was computed, along with every signal that produced the score.
-- **Provenance on everything.** DOI, PMID, NCT and OpenAlex ids are preserved
-  and every claim links back to its source.
+- **Databases, graphs and statistics for facts; LLMs for language.** No language
+  model is used anywhere in this codebase yet. Every number is a query, a graph
+  traversal, or a statistical model.
+- **Measured, not assumed.** The registry-aware prior may move toward the null,
+  away from it, or not at all. The tool reports which, and says when the two
+  priors are identical.
+- **One effect scale.** Only hazard ratios for one endpoint class are pooled.
+  Odds ratios and response-rate differences are recorded with an exclusion
+  reason rather than converted.
+- **Prediction intervals, not confidence intervals.** A designer asks where the
+  *next* trial will land, so the back-test scores prediction intervals that
+  include between-trial heterogeneity, uncertainty in the pooled mean, and the
+  new trial's own sampling variance.
+- **Absence of evidence is not evidence of absence.** No publication found ≠
+  unpublished. No retraction notice ≠ not retracted. Both are stated in the
+  output, not just in this README.
+- **Descriptive, never accusatory.** A registry-publication difference is
+  reported as a difference. A citation to a retracted paper is a timing fact.
+  A coauthorship path is a relationship, and whether it is a conflict is the
+  editor's decision.
 
 ---
 
-## How the trial link works
+## HTTP API
 
-The spec calls trial↔publication matching the hardest problem. Most of it
-dissolves with the right source: PubMed records a ClinicalTrials.gov accession
-number whenever an article declares one, and the registry lists PMIDs back. So
-the common case is an **identifier match**, with no inference at all. When
-nothing is declared, [trial_paper_matcher.py](backend/matching/trial_paper_matcher.py)
-falls back to weighted metadata signals and labels the result `inferred`.
+```sh
+venv/bin/python main.py
+```
 
-But a declared identifier proves a paper *concerns* a trial, not that it
-*reports* it. Registry reference lists mix primary results, long-term follow-ups,
-secondary analyses and passing mentions — all declaring the same id, so ranking
-by the identifier alone puts a 2025 LLM-methods paper beside the primary results
-paper. [publication_role.py](backend/matching/publication_role.py) separates them
-using registered-outcome coverage, investigator overlap, PubMed publication type
-and sponsor designation.
+| Endpoint | Returns |
+|---|---|
+| `GET /api/design?condition=&endpoint=&hr=&alpha=&power=` | The full bias-aware design report |
+| `GET /api/cohort?condition=&endpoint=` | Cohort composition and linkage counts |
+| `POST /api/reviewer-conflict` | Conflict paths with evidence |
+| `GET /api/graph?doi=&depth=1\|2` | Citation graph, retraction evidence, blast radius |
+| `GET /api/demo` | Bundled citation-graph snapshot |
+| `GET /api/trial?nct=` · `/api/paper?pmid=` · `/api/compare?nct=&pmid=` | Registered-vs-published comparison |
 
-Because endpoint names are generic — "overall survival" appears in most oncology
-abstracts — a reporting role is only assigned once the link itself is credible.
+```sh
+curl -X POST localhost:8000/api/reviewer-conflict -H 'Content-Type: application/json' \
+  -d '{"candidate_reviewer":"Martin Reck","manuscript_authors":["Tony Mok"],"max_hops":2}'
+```
 
 ---
 
 ## Layout
 
 ```
-main.py             HTTP server: static files + JSON API
-graph.py            citation graph construction, distance and exposure BFS
-openalex.py         citation edges          crossref.py   retraction notices
-api_client.py       cached fetch, retry, DOI validation
-static/             SVG citation graph UI, no framework
-data/demo.json      saved real-data snapshot     capture_demo.py  regenerates it
-
 backend/
-  sources/          http.py (cache, throttle, retry)
-                    clinical_trials.py, pubmed.py
-  models/           core.py, matching.py, comparison.py
-  matching/         trial_paper_matcher.py, publication_role.py
-  compare/          trial_publication.py   <- the deterministic comparison
-  report.py         shared by the CLI and the API
-cli.py              terminal surface for the comparison
-tests/              offline: mocks for the graph, fixtures for the comparison
-legacy_plot.py      superseded matplotlib rendering, kept for reference
+  sources/            http.py (cache, per-host throttle, retry)
+                      clinical_trials.py  registry cohort, posted results
+                      pubmed.py           NCT<->publication join
+                      openalex.py         scholarly graph
+  models/             core.py, effects.py, matching.py, comparison.py
+  matching/           trial_paper_matcher.py, publication_role.py
+  compare/            trial_publication.py    registered-vs-published table
+  publication_bias/   cohort.py         step 1  narrow registry cohort
+                      linkage.py        steps 3-5  channels, dark matter
+                      priors.py         steps 7-8  the two priors
+                      publication_model.py  step 6  does publication track results?
+                      power.py          step 9   Schoenfeld design consequence
+                      sensitivity.py    step 10  unknown-result sweep
+                      backtest.py       section 4  leave-one-out validation
+                      analysis.py       orchestrator
+  graph/              coauthors.py, reviewer_conflicts.py
+  render.py           terminal report
+cli.py                design | cohort | reviewer | trial | paper | compare
+main.py               HTTP server + static UI
+graph.py              citation graph, exposure BFS, blast_radius
+static/               SVG citation graph UI
+data/cohorts/         saved cohorts      data/demo.json  saved graph snapshot
+tests/                63 offline tests
 ```
 
 ---
 
-## Known limitations
+## What is not built
 
-- **Abstracts only.** No full text, so outcomes reported solely in tables or
-  supplements read as `not identified`. Europe PMC full text would fix this.
-- **Lexical outcome matching.** Registered names are reduced to their core
-  concept before matching, but an endpoint a paper renames entirely is missed.
-  This is where the LLM normalization step in section 9 belongs.
-- **Enrollment parsing is regex-based.** It reports the abstract count closest
-  to the registered figure and quotes the sentence, so a wrong pick is visible.
-- **The citation graph is sampled**, not exhaustive — top citing works at the
-  first hop, up to four per paper at the second.
-- **No "cited after retraction" metric yet.** Node dates and notice dates are
-  both already in the payload, so this is a small addition.
-- **The trial comparison has no UI yet** — it is CLI and API only.
+Stated plainly so the gaps are not mistaken for claims:
 
-## Next
-
-1. Surface the trial comparison as a third tab in the web UI.
-2. Add the "published after the retraction date" metric to the graph.
-3. Feature 3: coauthorship graph and reviewer conflict paths.
+- **No Elasticsearch.** Candidate retrieval for fuzzy matching currently uses
+  the registry and PubMed directly. The fuzzy scorer exists and is tested; it is
+  the retrieval layer in front of it that is missing.
+- **No LLM adjudication.** The middle-confidence branch of the matching cascade
+  falls through to "no link identified" rather than to a cheap model.
+- **No web UI for the hero feature.** Bias-aware design is CLI and API only; the
+  browser UI covers the citation/retraction graph.
+- **One disease area, one endpoint class at a time.** Widening this is a cohort
+  parameter, not new code, but nothing cross-disease has been validated.
+- **Fuzzy matching is not used in cohort construction.** Only the two identifier
+  channels run there, which is conservative: it may under-count publications and
+  therefore over-state the gap. Turning it on is a one-line change once its
+  false-positive rate has been measured.
+- **Category C dominates this cohort** (316 of 400). Most completed trials post
+  no analyzable hazard ratio at all, which limits how much the observable A-vs-B
+  comparison can carry.

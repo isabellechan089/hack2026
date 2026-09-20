@@ -1,13 +1,20 @@
 #!/usr/bin/env python
-"""Command-line entry point for the registered-vs-published comparison.
+"""Command-line entry point.
 
+Hero feature -- bias-aware trial design:
+
+    python cli.py design --condition "non-small cell lung cancer" --hr 0.65
+
+Supporting views:
+
+    python cli.py cohort --condition "non-small cell lung cancer"
+    python cli.py reviewer --reviewer "Martin Reck" --authors "Tony Mok"
     python cli.py trial NCT01866319          # trial -> its publications
     python cli.py paper 36416836             # publication -> its trial(s)
     python cli.py compare NCT02506153 36416836
-    python cli.py trial NCT01866319 --json   # machine-readable output
 
-Every row printed here is produced by deterministic rules over registry and
-PubMed fields. No language model is involved.
+Every number printed here comes from registry records, the scholarly graph, or
+a statistical model. No language model is involved.
 """
 
 import argparse
@@ -30,6 +37,9 @@ from backend.models.comparison import (
     NOT_REGISTERED,
     TrialPublicationComparison,
 )
+from backend.publication_bias.analysis import analyze
+from backend.publication_bias.cohort import describe, load_or_build, save_cohort
+from backend.render import BOLD, DIM, RESET, render, rule, wrap
 from backend.sources import clinical_trials, pubmed
 from backend.sources.http import SourceError
 
@@ -206,10 +216,158 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _progress(index: int, total: int, nct_id: str) -> None:
+    if index % 25 == 0 or index == total:
+        print("  building cohort {}/{} ({})".format(index, total, nct_id), file=sys.stderr)
+
+
+def _load_cohort(args: argparse.Namespace):
+    """Use a saved cohort when one exists, so a demo never depends on the APIs."""
+    return load_or_build(
+        args.condition,
+        endpoint_class=args.endpoint,
+        phases=tuple(args.phases.split(",")),
+        max_studies=args.max_studies,
+        rebuild=args.rebuild,
+        progress=None if args.quiet else _progress,
+    )
+
+
+def cmd_design(args: argparse.Namespace) -> int:
+    cohort = _load_cohort(args)
+    if args.save:
+        print("  cohort saved to {}".format(save_cohort(cohort)), file=sys.stderr)
+    report = analyze(
+        cohort,
+        assumed_hr=args.hr,
+        alpha=args.alpha,
+        target_power=args.power,
+        event_probability=args.event_probability,
+        run_backtest=not args.no_backtest,
+    )
+    if args.json:
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    print(render(report))
+    return 0
+
+
+def cmd_cohort(args: argparse.Namespace) -> int:
+    cohort = _load_cohort(args)
+    path = save_cohort(cohort) if args.save else None
+    summary = describe(cohort)
+    if args.json:
+        print(json.dumps(summary, indent=2))
+        return 0
+    print()
+    print(BOLD + "COHORT " + summary["condition"] + RESET)
+    print(rule())
+    for key in ("trials", "with_publication_identified", "publication_linkage_rate",
+                "with_usable_effect", "excluded"):
+        print("  {:<36} {}".format(key.replace("_", " "), summary[key]))
+    print("  categories                           {}".format(summary["categories"]))
+    print("  sponsor types                        {}".format(summary["sponsor_types"]))
+    if path:
+        print("  saved to                             {}".format(path))
+    print()
+    return 0
+
+
+def cmd_reviewer(args: argparse.Namespace) -> int:
+    from backend.graph.reviewer_conflicts import find_conflicts, resolve_author
+
+    reviewer = resolve_author(args.reviewer)
+    if reviewer is None:
+        print("Could not resolve reviewer {!r} in OpenAlex.".format(args.reviewer), file=sys.stderr)
+        return 1
+    authors = []
+    for name in [a.strip() for a in args.authors.split(",") if a.strip()]:
+        record = resolve_author(name)
+        if record is None:
+            print("Could not resolve manuscript author {!r}.".format(name), file=sys.stderr)
+            continue
+        authors.append(record["id"])
+    if not authors:
+        print("No manuscript authors could be resolved.", file=sys.stderr)
+        return 1
+
+    result = find_conflicts(
+        reviewer["id"], authors, max_hops=args.max_hops, since_year=args.since_year
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+
+    print()
+    print(BOLD + "REVIEWER CONFLICT CHECK" + RESET)
+    print(rule("="))
+    print("  Reviewer  {} ({})".format(result.get("reviewer_name") or args.reviewer, result["reviewer"]))
+    print("  Searched  up to {} hop(s){}".format(
+        result["searched_max_hops"],
+        " since {}".format(result["since_year"]) if result["since_year"] else ""))
+    print("  Minimum graph distance: {}".format(
+        result["minimum_distance"] if result["minimum_distance"] is not None else "no path found"))
+    print(rule())
+    for entry in result["results"]:
+        print("  {}{}{}  distance {}".format(
+            BOLD, entry.get("manuscript_author_name") or entry["manuscript_author"], RESET,
+            entry["distance"] if entry["distance"] is not None else "--"))
+        if entry.get("note"):
+            print(wrap(DIM + entry["note"] + RESET, indent="    "))
+        if entry.get("summary"):
+            print(wrap(entry["summary"], indent="    "))
+        for path in entry.get("paths", [])[:args.max_paths]:
+            print("    " + DIM + " -> ".join(path["author_names"]) + RESET)
+            for step in path["steps"]:
+                for work in step["works"][:2]:
+                    print("       {} {} {}".format(
+                        DIM, work.get("year") or "----",
+                        (work.get("title") or "")[:66] + RESET))
+        print()
+    print(wrap(DIM + result["interpretation"] + RESET))
+    print()
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--evidence", action="store_true", help="print source quotes for every row")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    def add_cohort_args(parser_obj):
+        parser_obj.add_argument("--condition", required=True, help="disease area for the cohort")
+        parser_obj.add_argument("--endpoint", default="os", choices=("os", "pfs"))
+        parser_obj.add_argument("--phases", default="2,3")
+        parser_obj.add_argument("--max-studies", type=int, default=300, dest="max_studies")
+        parser_obj.add_argument("--save", action="store_true", help="write the cohort to data/cohorts/")
+        parser_obj.add_argument("--rebuild", action="store_true",
+                                help="ignore any saved cohort and refetch from the live APIs")
+        parser_obj.add_argument("--quiet", action="store_true")
+        parser_obj.add_argument("--json", action="store_true")
+
+    design_parser = subparsers.add_parser("design", help="bias-aware trial design (hero feature)")
+    add_cohort_args(design_parser)
+    design_parser.add_argument("--hr", type=float, default=0.65, help="your assumed hazard ratio")
+    design_parser.add_argument("--alpha", type=float, default=0.05)
+    design_parser.add_argument("--power", type=float, default=0.80)
+    design_parser.add_argument("--event-probability", type=float, default=None,
+                               dest="event_probability",
+                               help="overall event probability, to convert events into participants")
+    design_parser.add_argument("--no-backtest", action="store_true", dest="no_backtest")
+    design_parser.set_defaults(func=cmd_design)
+
+    cohort_parser = subparsers.add_parser("cohort", help="build and summarize a registry cohort")
+    add_cohort_args(cohort_parser)
+    cohort_parser.set_defaults(func=cmd_cohort)
+
+    reviewer_parser = subparsers.add_parser("reviewer", help="reviewer conflict paths")
+    reviewer_parser.add_argument("--reviewer", required=True)
+    reviewer_parser.add_argument("--authors", required=True, help="comma-separated manuscript authors")
+    reviewer_parser.add_argument("--max-hops", type=int, default=2, dest="max_hops")
+    reviewer_parser.add_argument("--since-year", type=int, default=None, dest="since_year")
+    reviewer_parser.add_argument("--max-paths", type=int, default=3, dest="max_paths")
+    reviewer_parser.add_argument("--json", action="store_true")
+    reviewer_parser.set_defaults(func=cmd_reviewer)
 
     trial_parser = subparsers.add_parser("trial", help="compare a trial against its publications")
     trial_parser.add_argument("nct_id")

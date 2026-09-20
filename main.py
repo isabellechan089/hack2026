@@ -7,6 +7,9 @@ from urllib.parse import urlparse, parse_qs
 from graph import build_graph
 from api_client import normalize_doi
 from backend.report import comparison_report, paper_report, trial_report
+from backend.publication_bias.analysis import analyze
+from backend.publication_bias.cohort import build_cohort
+from backend.graph.reviewer_conflicts import find_conflicts, resolve_author
 from backend.sources.clinical_trials import looks_like_nct_id
 from backend.sources.http import SourceError
 ROOT = Path(__file__).parent
@@ -40,6 +43,38 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply({'error': str(error)}, 400)
             except Exception:
                 return self.reply({'error': 'The metadata provider could not complete this lookup. Check your connection or OPENALEX_API_KEY, or use the saved demo.'}, 502)
+        if parsed.path in ('/api/design', '/api/cohort'):
+            query = parse_qs(parsed.query)
+            try:
+                condition = (query.get('condition', [''])[0] or '').strip()
+                if not condition:
+                    raise ValueError('Provide a condition, for example "non-small cell lung cancer".')
+                endpoint = query.get('endpoint', ['os'])[0]
+                if endpoint not in ('os', 'pfs'):
+                    raise ValueError('endpoint must be os or pfs.')
+                cohort = build_cohort(
+                    condition,
+                    endpoint_class=endpoint,
+                    phases=tuple(query.get('phases', ['2,3'])[0].split(',')),
+                    max_studies=min(400, int(query.get('max_studies', ['300'])[0])),
+                )
+                if parsed.path == '/api/cohort':
+                    from backend.publication_bias.cohort import describe
+                    return self.reply(describe(cohort))
+                return self.reply(analyze(
+                    cohort,
+                    assumed_hr=float(query.get('hr', ['0.65'])[0]),
+                    alpha=float(query.get('alpha', ['0.05'])[0]),
+                    target_power=float(query.get('power', ['0.8'])[0]),
+                    event_probability=float(query['event_probability'][0])
+                    if query.get('event_probability') else None,
+                ))
+            except ValueError as error:
+                return self.reply({'error': str(error)}, 400)
+            except SourceError:
+                return self.reply({'error': 'A source could not complete this lookup. Try again shortly.'}, 502)
+            except Exception:
+                return self.reply({'error': 'This analysis could not be completed.'}, 502)
         if parsed.path in ('/api/trial', '/api/paper', '/api/compare'):
             query = parse_qs(parsed.query)
             try:
@@ -63,6 +98,50 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path.startswith('/api/'):
             return self.reply({'error': 'Not found'}, 404)
         super().do_GET()
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path != '/api/reviewer-conflict':
+            return self.reply({'error': 'Not found'}, 404)
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+            if length <= 0 or length > 1_000_000:
+                raise ValueError('Send a JSON body describing the manuscript and reviewer.')
+            body = json.loads(self.rfile.read(length))
+        except json.JSONDecodeError:
+            return self.reply({'error': 'Request body must be valid JSON.'}, 400)
+        except ValueError as error:
+            return self.reply({'error': str(error) or 'Request body must be JSON.'}, 400)
+
+        try:
+            reviewer_query = body.get('candidate_reviewer')
+            authors_query = body.get('manuscript_authors') or []
+            if not reviewer_query or not authors_query:
+                raise ValueError('candidate_reviewer and manuscript_authors are both required.')
+
+            reviewer = resolve_author(str(reviewer_query))
+            if reviewer is None:
+                raise ValueError('Could not resolve the candidate reviewer in OpenAlex.')
+            authors, unresolved = [], []
+            for name in authors_query:
+                record = resolve_author(str(name))
+                (authors.append(record['id']) if record else unresolved.append(name))
+            if not authors:
+                raise ValueError('None of the manuscript authors could be resolved in OpenAlex.')
+
+            result = find_conflicts(
+                reviewer['id'], authors,
+                max_hops=max(1, min(4, int(body.get('max_hops', 2)))),
+                since_year=body.get('since_year'),
+            )
+            result['unresolved_authors'] = unresolved
+            return self.reply(result)
+        except ValueError as error:
+            return self.reply({'error': str(error)}, 400)
+        except SourceError:
+            return self.reply({'error': 'OpenAlex could not complete this lookup.'}, 502)
+        except Exception:
+            return self.reply({'error': 'This conflict check could not be completed.'}, 502)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8000)

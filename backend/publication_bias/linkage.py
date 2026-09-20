@@ -1,0 +1,259 @@
+"""Link registry trials to the published record, and measure what is missing.
+
+Implements steps 3-5 of the hero pipeline. Three independent linkage channels
+are tried in order of authority, because a false "unpublished" verdict is the
+most damaging error this system can make (section 19, rule 5):
+
+  1. registry_reference -- the ClinicalTrials.gov record lists a PMID.
+  2. pubmed_si          -- PubMed indexes the NCT id as a secondary source id,
+                           which catches publications the registry never listed.
+  3. fuzzy              -- deterministic metadata scoring, used only when
+                           neither identifier channel returns anything.
+
+A trial with no link from any channel is reported as "no publication
+identified", never as "unpublished".
+"""
+
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Optional, Sequence
+
+from ..models.core import Paper, Trial
+from ..models.effects import EffectEstimate
+from ..sources import openalex, pubmed
+from ..sources.http import SourceError
+
+# Linkage channels, most authoritative first.
+REGISTRY_REFERENCE = "nct_registry_reference"
+PUBMED_SECONDARY_ID = "nct_pubmed_si"
+FUZZY = "fuzzy"
+
+# Step 5 categories.
+CATEGORY_A = "published_with_result"       # publication identified + registry result
+CATEGORY_B = "registry_only_with_result"   # no publication identified + registry result
+CATEGORY_C = "no_publication_no_result"    # neither
+
+CATEGORY_LABELS = {
+    CATEGORY_A: "Publication identified, registry result posted",
+    CATEGORY_B: "No publication identified, registry result posted",
+    CATEGORY_C: "No publication identified, no usable registry result",
+}
+
+
+@dataclass
+class PublicationLink:
+    """One trial-publication link, with the evidence that produced it."""
+
+    nct_id: str
+    pmid: Optional[str] = None
+    doi: Optional[str] = None
+    openalex_id: Optional[str] = None
+    title: str = ""
+    publication_date: Optional[str] = None
+    citation_count: Optional[int] = None
+    is_retracted: bool = False
+    match_method: str = FUZZY
+    match_score: float = 0.0
+    nct_exact: bool = False
+    features: Dict[str, float] = field(default_factory=dict)
+    evidence: List[str] = field(default_factory=list)
+    llm_used: bool = False
+    verified: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class CohortTrial:
+    """A registry trial with its publication links and its posted results."""
+
+    trial: Trial
+    effects: List[EffectEstimate] = field(default_factory=list)
+    links: List[PublicationLink] = field(default_factory=list)
+
+    @property
+    def has_publication(self) -> bool:
+        return bool(self.links)
+
+    @property
+    def poolable_effects(self) -> List[EffectEstimate]:
+        return [effect for effect in self.effects if effect.is_poolable]
+
+    def best_effect(self, endpoint_class: str = "os") -> Optional[EffectEstimate]:
+        """The trial's estimate for one endpoint, preferring a primary outcome.
+
+        Pooling needs at most one estimate per trial, or a trial reporting the
+        same endpoint several ways would be counted repeatedly.
+        """
+        candidates = [
+            effect
+            for effect in self.poolable_effects
+            if effect.endpoint_class == endpoint_class
+        ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda effect: (
+                effect.outcome_type != "PRIMARY",  # primary outcomes first
+                effect.standard_error or float("inf"),  # then most precise
+            )
+        )
+        return candidates[0]
+
+    def category(self, endpoint_class: str = "os") -> str:
+        has_result = self.best_effect(endpoint_class) is not None
+        if self.has_publication and has_result:
+            return CATEGORY_A
+        if has_result:
+            return CATEGORY_B
+        return CATEGORY_C
+
+    def to_dict(self, endpoint_class: str = "os") -> Dict[str, Any]:
+        effect = self.best_effect(endpoint_class)
+        return {
+            "nct_id": self.trial.nct_id,
+            "title": self.trial.title,
+            "phases": self.trial.phases,
+            "status": self.trial.status,
+            "enrollment": self.trial.enrollment,
+            "lead_sponsor": self.trial.lead_sponsor,
+            "sponsor_type": sponsor_type(self.trial),
+            "start_date": self.trial.start_date,
+            "completion_date": self.trial.completion_date,
+            "conditions": self.trial.conditions,
+            "category": self.category(endpoint_class),
+            "has_publication": self.has_publication,
+            "links": [link.to_dict() for link in self.links],
+            "effect": effect.to_dict() if effect else None,
+            "effect_count": len(self.effects),
+            "poolable_effect_count": len(self.poolable_effects),
+            "registry_url": "https://clinicaltrials.gov/study/{}".format(self.trial.nct_id),
+        }
+
+
+# Industry sponsors dominate registry postings and behave differently from
+# academic ones, so sponsor class is a covariate in the publication model.
+_INDUSTRY_HINTS = (
+    "inc", "ltd", "llc", "corp", "gmbh", "pharma", "pharmaceutic", "therapeutic",
+    "biosciences", "bioscience", "laboratories", "s.a", "co.", "ag", "plc",
+)
+_ACADEMIC_HINTS = (
+    "university", "universit", "hospital", "institute", "college", "school",
+    "center", "centre", "clinic", "foundation", "trust", "nhs", "cancer network",
+    "group", "consortium", "national", "ministry", "nci", "nih",
+)
+
+
+def sponsor_type(trial: Trial) -> str:
+    """Classify the lead sponsor, preferring the registry's own label.
+
+    ClinicalTrials.gov publishes a `class` for the lead sponsor (INDUSTRY, NIH,
+    OTHER_GOV, NETWORK, OTHER). Using it beats guessing from the sponsor name;
+    the name heuristic below is only a fallback for records that omit it.
+    """
+    declared = (trial.lead_sponsor_class or "").upper()
+    if declared == "INDUSTRY":
+        return "INDUSTRY"
+    if declared in ("NIH", "OTHER_GOV", "NETWORK", "INDIV", "OTHER", "FED", "UNKNOWN"):
+        return "NON_INDUSTRY"
+
+    name = (trial.lead_sponsor or "").lower()
+    if not name:
+        return "UNKNOWN"
+    if any(hint in name for hint in _INDUSTRY_HINTS):
+        return "INDUSTRY"
+    if any(hint in name for hint in _ACADEMIC_HINTS):
+        return "NON_INDUSTRY"
+    return "UNKNOWN"
+
+
+def _link_from_paper(
+    nct_id: str, paper: Paper, method: str, score: float, evidence: str
+) -> PublicationLink:
+    return PublicationLink(
+        nct_id=nct_id,
+        pmid=paper.pmid,
+        doi=paper.doi,
+        openalex_id=paper.openalex_id,
+        title=paper.title,
+        publication_date=paper.publication_date,
+        citation_count=paper.citation_count,
+        is_retracted=paper.is_retracted,
+        match_method=method,
+        match_score=score,
+        nct_exact=method in (REGISTRY_REFERENCE, PUBMED_SECONDARY_ID),
+        evidence=[evidence],
+    )
+
+
+def find_links(trial: Trial, use_fuzzy: bool = False) -> List[PublicationLink]:
+    """Find publications for one trial across the three channels."""
+    links: Dict[str, PublicationLink] = {}
+
+    # Channel 1: the registry's own reference list.
+    registry_pmids = {
+        ref["pmid"]: ref.get("type", "") for ref in trial.linked_references if ref.get("pmid")
+    }
+
+    # Channel 2: PubMed's secondary-source-id index.
+    si_pmids: List[str] = []
+    try:
+        si_pmids = pubmed.search_by_nct_id(trial.nct_id)
+    except SourceError:
+        pass
+
+    all_pmids = list(registry_pmids) + [p for p in si_pmids if p not in registry_pmids]
+    if not all_pmids and not use_fuzzy:
+        return []
+
+    papers = {paper.pmid: paper for paper in pubmed.get_papers_by_pmid(all_pmids) if paper.pmid}
+
+    for pmid in all_pmids:
+        paper = papers.get(pmid)
+        if paper is None:
+            continue
+        if pmid in registry_pmids:
+            method = REGISTRY_REFERENCE
+            link_type = registry_pmids[pmid] or "linked"
+            evidence = "ClinicalTrials.gov record {} lists PMID {} as a {} reference.".format(
+                trial.nct_id, pmid, link_type
+            )
+            score = 0.95 if link_type == "RESULT" else 0.9
+        else:
+            method = PUBMED_SECONDARY_ID
+            evidence = "PubMed indexes PMID {} under registry identifier {}.".format(
+                pmid, trial.nct_id
+            )
+            score = 1.0
+        # A publication that declares the NCT id itself is the strongest evidence.
+        if trial.nct_id.upper() in [n.upper() for n in paper.registered_trial_ids]:
+            score = 1.0
+            evidence += " The publication declares this identifier."
+        links[pmid] = _link_from_paper(trial.nct_id, paper, method, score, evidence)
+
+    return list(links.values())
+
+
+def enrich_with_openalex(cohort: Sequence[CohortTrial]) -> int:
+    """Attach OpenAlex ids, citation counts and retraction flags to every link.
+
+    OpenAlex is the scholarly graph the secondary features run on, but its PMID
+    coverage is incomplete. A link that OpenAlex cannot resolve keeps its PubMed
+    identity and is never downgraded to "no publication".
+    """
+    pmids = [link.pmid for item in cohort for link in item.links if link.pmid]
+    if not pmids:
+        return 0
+    works = openalex.get_works_by_pmid(sorted(set(pmids)))
+    resolved = 0
+    for item in cohort:
+        for link in item.links:
+            work = works.get(link.pmid or "")
+            if work is None:
+                continue
+            link.openalex_id = work.openalex_id
+            link.citation_count = work.citation_count
+            link.is_retracted = work.is_retracted
+            link.doi = link.doi or work.doi
+            resolved += 1
+    return resolved

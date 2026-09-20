@@ -202,3 +202,22 @@ def search_papers(query: str, limit: int = 10) -> List[Paper]:
 
     ids = json.loads(payload).get("esearchresult", {}).get("idlist", [])
     return get_papers_by_pmid(ids)
+
+
+def search_by_nct_id(nct_id: str, limit: int = 50) -> List[str]:
+    """PMIDs that PubMed indexes under a registry identifier.
+
+    PubMed stores ClinicalTrials.gov accession numbers in its secondary-source
+    id field, searchable as `NCT01234567[si]`. This finds publications that the
+    registry record itself never listed, which matters because a trial counted
+    as unpublished on registry references alone may simply have an out-of-date
+    reference list.
+    """
+    import json
+
+    payload = get_text(
+        "{}/esearch.fcgi".format(EUTILS),
+        {"db": "pubmed", "term": "{}[si]".format(nct_id.strip().upper()),
+         "retmode": "json", "retmax": limit},
+    )
+    return json.loads(payload).get("esearchresult", {}).get("idlist", [])

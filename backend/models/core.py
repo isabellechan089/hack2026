@@ -53,6 +53,7 @@ class Trial:
     primary_completion_date: Optional[str] = None
     completion_date: Optional[str] = None
     lead_sponsor: Optional[str] = None
+    lead_sponsor_class: Optional[str] = None  # registry's own INDUSTRY/NIH/OTHER label
     investigators: List[str] = field(default_factory=list)
     eligibility_criteria: Optional[str] = None
     has_results: bool = False

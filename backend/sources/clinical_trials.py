@@ -6,7 +6,7 @@ honestly report "not registered" rather than guessing.
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from ..models.core import Outcome, Provenance, Trial
 from .http import SourceError, get_json
@@ -94,6 +94,7 @@ def normalize_study(payload: Dict[str, Any]) -> Trial:
         primary_completion_date=_date(status.get("primaryCompletionDateStruct")),
         completion_date=_date(status.get("completionDateStruct")),
         lead_sponsor=(sponsor.get("leadSponsor", {}) or {}).get("name"),
+        lead_sponsor_class=(sponsor.get("leadSponsor", {}) or {}).get("class"),
         investigators=[
             official.get("name", "")
             for official in contacts.get("overallOfficials") or []
@@ -136,3 +137,151 @@ def search_trials(query: str, limit: int = 10) -> List[Trial]:
         {"query.term": query, "pageSize": limit, "format": "json"},
     )
     return [normalize_study(study) for study in payload.get("studies", [])]
+
+
+# --- Posted results: effect estimates ------------------------------------
+# Registry result postings carry the analysis a sponsor actually ran, including
+# hazard ratios with confidence intervals. This is the "registry-side" evidence
+# that section 3 compares against the published record.
+
+_OS_TERMS = ("overall survival", "os rate", "(os)")
+_PFS_TERMS = ("progression free", "progression-free", "pfs", "event free",
+              "event-free", "disease free", "disease-free", "recurrence free",
+              "time to progression")
+
+
+def classify_endpoint(title: Optional[str]) -> str:
+    """Bucket an outcome title into os / pfs / other.
+
+    Pooling requires endpoints that mean the same thing; an overall-survival
+    hazard ratio and a progression-free-survival hazard ratio are not
+    interchangeable even though both are hazard ratios.
+    """
+    text = (title or "").lower()
+    if any(term in text for term in _OS_TERMS):
+        return "os"
+    if any(term in text for term in _PFS_TERMS):
+        return "pfs"
+    return "other"
+
+
+def _to_float(value: Any) -> Optional[float]:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_effect_estimates(payload: Dict[str, Any]) -> List["EffectEstimate"]:
+    """Pull every posted analysis out of a study's results section.
+
+    Non-hazard-ratio analyses are still returned, carrying `excluded_reason`, so
+    that a cohort can report honestly on what it had to drop.
+    """
+    from ..models.effects import HAZARD_RATIO, EffectEstimate
+
+    nct_id = (
+        payload.get("protocolSection", {}).get("identificationModule", {}).get("nctId", "")
+    )
+    url = "https://clinicaltrials.gov/study/{}?tab=results".format(nct_id)
+    measures = (
+        payload.get("resultsSection", {})
+        .get("outcomeMeasuresModule", {})
+        .get("outcomeMeasures", [])
+        or []
+    )
+
+    estimates: List[EffectEstimate] = []
+    for measure in measures:
+        title = measure.get("title")
+        for analysis in measure.get("analyses") or []:
+            param_type = (analysis.get("paramType") or "").strip()
+            is_hr = "hazard ratio" in param_type.lower()
+            value = _to_float(analysis.get("paramValue"))
+            lower = _to_float(analysis.get("ciLowerLimit"))
+            upper = _to_float(analysis.get("ciUpperLimit"))
+
+            reason = None
+            if not is_hr:
+                reason = "Effect measure is '{}', not a hazard ratio.".format(
+                    param_type or "unlabeled"
+                )
+            elif value is None:
+                reason = "Hazard ratio has no numeric point estimate."
+            elif lower is None or upper is None:
+                reason = "Hazard ratio has no confidence interval, so its variance is unknown."
+
+            estimates.append(
+                EffectEstimate(
+                    nct_id=nct_id,
+                    measure=HAZARD_RATIO if is_hr else (param_type or "unlabeled"),
+                    value=value,
+                    ci_lower=lower,
+                    ci_upper=upper,
+                    p_value=analysis.get("pValue"),
+                    outcome_title=title,
+                    outcome_type=measure.get("type"),
+                    endpoint_class=classify_endpoint(title),
+                    groups=[
+                        group.get("title", "")
+                        for group in measure.get("groups") or []
+                        if group.get("title")
+                    ][:4],
+                    source_url=url,
+                    excluded_reason=reason,
+                )
+            )
+    return estimates
+
+
+def get_trial_with_results(nct_id: str) -> Tuple[Trial, List["EffectEstimate"]]:
+    """Fetch one trial together with the effect estimates it has posted."""
+    nct_id = nct_id.strip().upper()
+    if not looks_like_nct_id(nct_id):
+        raise SourceError("{!r} is not a valid NCT id".format(nct_id))
+    payload = get_json("{}/studies/{}".format(API_BASE, nct_id), {"format": "json"})
+    return normalize_study(payload), extract_effect_estimates(payload)
+
+
+# --- Cohort construction --------------------------------------------------
+
+
+def search_cohort(
+    condition: str,
+    phases: Sequence[str] = ("2", "3"),
+    with_results: bool = True,
+    status: str = "COMPLETED",
+    max_studies: int = 400,
+) -> List[Dict[str, Any]]:
+    """Enumerate a narrow registry cohort, returning raw study payloads.
+
+    Raw payloads are returned rather than `Trial` objects so the caller can pull
+    both protocol fields and posted results without a second fetch.
+    """
+    agg = ["studyType:int"]
+    if phases:
+        agg.append("phase:" + " ".join(phases))
+    if with_results:
+        agg.append("results:with")
+
+    studies: List[Dict[str, Any]] = []
+    token: Optional[str] = None
+    while len(studies) < max_studies:
+        params: Dict[str, Any] = {
+            "query.cond": condition,
+            "filter.overallStatus": status,
+            "aggFilters": ",".join(agg),
+            "pageSize": min(100, max_studies - len(studies)),
+            "format": "json",
+        }
+        if token:
+            params["pageToken"] = token
+        payload = get_json("{}/studies".format(API_BASE), params)
+        batch = payload.get("studies", [])
+        if not batch:
+            break
+        studies.extend(batch)
+        token = payload.get("nextPageToken")
+        if not token:
+            break
+    return studies[:max_studies]
