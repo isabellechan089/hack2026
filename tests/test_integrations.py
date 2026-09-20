@@ -54,6 +54,88 @@ class EuropePMCTests(unittest.TestCase):
         self.assertIn("0.62", sentences[0])
 
 
+    def test_hazard_ratio_sentences_accept_house_styles(self):
+        """Phrasings that are ordinary in oncology journals but not in one regex.
+
+        Each of these was silently dropped, so a paper that reported its hazard
+        ratio only this way reached the model with nothing to read.
+        """
+        cases = {
+            "lancet middle dot": "Overall survival favoured the combination "
+                                 "(HR 0\u00b765, 95% CI 0\u00b750-0\u00b785; p=0\u00b70002).",
+            "adjusted ratio": "The adjusted aHR for progression was 0.65 (95% CI, 0.50-0.85).",
+            "plural": "HRs for the two subgroups were 0.65 and 0.72 respectively.",
+            "terse caption": "PFS by treatment arm. HR 0.65 (0.50-0.85).",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                art = {"sections": [{"title": "Results", "text": text}], "text": text}
+                self.assertTrue(europepmc.hazard_ratio_sentences(art))
+
+    def test_hazard_ratio_sentences_reject_shared_abbreviations(self):
+        """"HR" also abbreviates hours and health-related quality of life.
+
+        Both appear beside decimals in the same papers, so accepting them costs
+        model tokens on sentences that cannot contain an effect estimate.
+        """
+        cases = {
+            "quality of life": "HR-QoL scores improved by 3.5 points over baseline in both arms.",
+            "hours": "Mean AUC over the interval 0-24 hr was 3.5 mg/L.",
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                art = {"sections": [{"title": "Results", "text": text}], "text": text}
+                self.assertEqual(europepmc.hazard_ratio_sentences(art), [])
+
+    def test_full_text_reads_figure_captions(self):
+        """A Kaplan-Meier caption often carries the headline ratio.
+
+        Captions sit in <fig><caption><p>, which a non-recursive search of a
+        section's own paragraphs steps straight over.
+        """
+        xml = ("<article><body><sec><title>Results</title>"
+               "<p>Median PFS was 10.4 months versus 6.8 months.</p>"
+               "<fig><caption><p>Figure 2. Progression-free survival. "
+               "HR 0.65 (95% CI, 0.50-0.85).</p></caption></fig>"
+               "</sec></body></article>")
+        with patch.object(europepmc, "get_text", return_value=xml):
+            art = europepmc.full_text("PMC1")
+        self.assertIn("figure", [s["title"] for s in art["sections"]])
+        self.assertTrue(any("0.65" in s for s in europepmc.hazard_ratio_sentences(art)))
+
+    def test_full_text_separates_table_cells(self):
+        """Table cells need a separator or the cue words stop being words.
+
+        Concatenating itertext() welds a header to the row beneath it --
+        "EndpointHazard ratio95% CI" -- and the word boundaries the cue pattern
+        depends on disappear, so an outcome table stops qualifying as a place a
+        hazard ratio might be.
+        """
+        xml = ("<article><body><table-wrap><label>Table 2</label>"
+               "<caption><p>Efficacy outcomes</p></caption><table>"
+               "<tr><th>Endpoint</th><th>Hazard ratio</th><th>95% CI</th></tr>"
+               "<tr><td>PFS</td><td>0.65</td><td>0.50-0.85</td></tr>"
+               "</table></table-wrap></body></article>")
+        with patch.object(europepmc, "get_text", return_value=xml):
+            art = europepmc.full_text("PMC1")
+        table = next(s for s in art["sections"] if s["title"] == "table")
+        self.assertIn("Hazard ratio", table["text"])
+        self.assertNotIn("EndpointHazard", table["text"])
+        self.assertTrue(any("0.65" in s for s in europepmc.hazard_ratio_sentences(art)))
+
+    def test_full_text_caps_table_length(self):
+        """A long table is mostly per-site counts; the estimates are near the top."""
+        rows = "".join("<tr><td>site {}</td><td>0.9{}</td></tr>".format(i, i % 10)
+                       for i in range(400))
+        xml = ("<article><body><table-wrap><table>"
+               "<tr><th>Hazard ratio</th></tr>" + rows +
+               "</table></table-wrap></body></article>")
+        with patch.object(europepmc, "get_text", return_value=xml):
+            art = europepmc.full_text("PMC1")
+        table = next(s for s in art["sections"] if s["title"] == "table")
+        self.assertLessEqual(len(table["text"]), europepmc._MAX_TABLE_CHARS)
+
+
 class LLMClientTests(unittest.TestCase):
     def setUp(self):
         from backend.llm import client

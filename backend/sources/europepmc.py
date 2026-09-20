@@ -46,10 +46,32 @@ def _remember_miss(pmcid: str, reason: str) -> None:
     with open(_MISSES, "w", encoding="utf-8") as handle:
         json.dump(misses, handle)
 
+# Cue words that mark a sentence as possibly carrying a hazard ratio.
+#
+# The abbreviation alternation is case-sensitive on purpose: lowercase "hr" is
+# an hour in a pharmacokinetics paper, not a hazard ratio. The optional leading
+# letter catches "aHR" and "cHR", the trailing "s?" catches "HRs", and HR-QoL
+# (health-related quality of life) is excluded because it shares the
+# abbreviation and nothing else.
 _HR_CUE = re.compile(
-    r"\b(?:hazard ratio|HR)\b|\bcox\b|\bstratified\b", re.IGNORECASE
+    r"\bhazard[ -]?ratios?\b"
+    r"|(?-i:\b[a-zA-Z]?HRs?\b)(?![ -]?QoL)"
+    r"|\bcox\b"
+    r"|\bstratified\b",
+    re.IGNORECASE,
 )
-_NUMBER = re.compile(r"\d\.\d")
+
+# Lancet journals set decimals with a middle dot ("0·65") and publish a large
+# share of phase III oncology trials, so a period-only pattern skips them.
+_NUMBER = re.compile(r"\d[.\u00b7]\d")
+
+# A hazard ratio in a figure caption can be terser than a prose sentence:
+# "HR 0.65 (0.50-0.85)" is twenty characters and still a complete finding.
+_MIN_SENTENCE = 12
+
+# Tables are worth reading but not worth paying for whole; an outcome table
+# carries its estimates near the top, and a long one is mostly per-site counts.
+_MAX_TABLE_CHARS = 1500
 
 
 def availability(pmids: Iterable[str], chunk: int = 25) -> Dict[str, Dict[str, Any]]:
@@ -107,10 +129,37 @@ def full_text(pmcid: str) -> Optional[Dict[str, Any]]:
         if body:
             sections.append({"title": title, "text": body})
     body_all = _clean(" ".join("".join(p.itertext()) for p in root.iter("p")))
-    for table in root.iter("table-wrap"):
-        caption = _clean("".join(table.itertext()))
+
+    # Figure captions carry the headline estimate more often than they look as
+    # though they would -- a Kaplan-Meier panel is captioned with its hazard
+    # ratio -- and nothing above reaches them, because `sec.findall("p")` does
+    # not descend into <fig><caption>.
+    for figure in root.iter("fig"):
+        caption = _clean(" ".join(figure.itertext()))
         if caption:
-            sections.append({"title": "table", "text": caption})
+            sections.append({"title": "figure", "text": caption})
+
+    # Tables hold the secondary-endpoint estimates. Cells have to be joined with
+    # a separator: concatenating them welds each header to the row beneath it
+    # ("EndpointHazard ratio95% CI"), which destroys the word boundaries the cue
+    # pattern matches on, so a table that plainly says "Hazard ratio" stopped
+    # qualifying as a place a hazard ratio might be.
+    for table in root.iter("table-wrap"):
+        cells = [_clean("".join(cell.itertext()))
+                 for cell in table.iter() if cell.tag in ("td", "th")]
+        text = " | ".join(cell for cell in cells if cell)
+        if text:
+            label = _clean(" ".join(
+                "".join(part.itertext())
+                for part in list(table.iter("label")) + list(table.iter("caption"))))
+            text = "{} {}".format(label, text).strip()
+        else:
+            # No marked-up cells (some publishers ship tables as graphics);
+            # fall back to whatever text the wrapper carries.
+            text = _clean("".join(table.itertext()))
+        if text:
+            sections.append({"title": "table", "text": text[:_MAX_TABLE_CHARS]})
+
     return {"pmcid": pmcid, "sections": sections, "text": body_all, "chars": len(body_all)}
 
 
@@ -127,7 +176,7 @@ def hazard_ratio_sentences(article: Dict[str, Any], limit: int = 40) -> List[str
     def take(text: str) -> None:
         for sentence in re.split(r"(?<=[.;])\s+(?=[A-Z(])", text or ""):
             s = _clean(sentence)
-            if len(s) < 25 or s in seen:
+            if len(s) < _MIN_SENTENCE or s in seen:
                 continue
             if _HR_CUE.search(s) and _NUMBER.search(s):
                 seen.add(s)

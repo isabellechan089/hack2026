@@ -19,11 +19,11 @@ registry results, progression-free survival:
 
 ```
                                     linked to a publication
-  statistically significant                92%   (n=39)
-  not significant                          62%   (n=45)
+  statistically significant                93%   (n=41)
+  not significant                          60%   (n=45)
 
   favours treatment                        85%   (n=61)
-  favours control                          52%   (n=23)
+  favours control                          52%   (n=25)
 ```
 
 Trials that worked are far more likely to be findable in the literature. That
@@ -31,8 +31,8 @@ shifts the pooled effect estimate:
 
 ```
   PRIOR                     HR          95% CI      TRIALS
-  Literature-only        0.761   (0.712, 0.814)         64
-  Registry-aware         0.796   (0.752, 0.843)         84
+  Literature-only        0.761   (0.711, 0.814)         65
+  Registry-aware         0.801   (0.756, 0.848)         86
 ```
 
 And that shift has a design consequence:
@@ -41,15 +41,15 @@ And that shift has a design consequence:
   BASIS                            HR    EVENTS   POWER DELIVERED
   Your assumption                0.65       170               80%
   Published-literature estimate  0.76       422               43%
-  Registry-aware estimate        0.80       606               32%
+  Registry-aware estimate        0.80       636               30%
 ```
 
-Leave-one-out back-test over the 84 trials with usable hazard ratios:
+Leave-one-out back-test over the 86 trials with usable hazard ratios:
 
 ```
   MODEL                  COVERAGE   MAE log(HR)     BIAS
-  Literature-only             81%         0.278   -0.036
-  Registry-aware              79%         0.267   +0.010
+  Literature-only             79%         0.291   -0.044
+  Registry-aware              76%         0.279   +0.007
 ```
 
 Both models are well calibrated. The difference is in **bias**: the
@@ -68,6 +68,7 @@ Egger's regression test measures that asymmetry.
   Literature-only             65   -2.36 ± 0.31     <0.001
   Registry-aware              86   -1.87 ± 0.27     <0.001
 
+
   17 of the 21 registry-only trials are less precise than the median
   published trial, and 17 report a weaker effect than the pooled estimate.
 ```
@@ -78,7 +79,7 @@ the registry itself is incomplete, and small-study effects have other causes.
 
 ### Does it repeat in other disease areas?
 
-Ten cohorts, five disease areas, the same pipeline (`/api/overview`):
+Eleven cohorts, six disease areas, the same pipeline (`/api/overview`):
 
 ```
   COHORT                      LINKED · SIGNIFICANT   LINKED · NOT SIG.   HR LITERATURE → REGISTRY
@@ -90,14 +91,16 @@ Ten cohorts, five disease areas, the same pipeline (`/api/overview`):
   melanoma               PFS        92%  (n=25)         68%  (n=19)        0.702 → 0.712
   NSCLC                  OS        100%  (n=14)         75%  (n=59)        0.905 → 0.918
   NSCLC                  PFS        93%  (n=41)         60%  (n=45)        0.761 → 0.801
+  glioblastoma           PFS        78%  (n=9)          85%  (n=13)       0.927 → 0.957
   prostate cancer        OS        100%  (n=10)         86%  (n=28)        0.927 → 0.935
   prostate cancer        PFS        95%  (n=21)         78%  (n=18)        0.728 → 0.757
 ```
 
-In all ten, statistically significant trials were more likely to be linked to
-a publication. In nine of ten, adding the registry-only trials moved the pooled
-hazard ratio toward the null. The counts are descriptive; they say how often
-the direction repeated, not that it must.
+In ten of the eleven, statistically significant trials were more likely to be
+linked to a publication, and adding the registry-only trials moved the pooled
+hazard ratio toward the null. Glioblastoma is the exception on both counts, and
+the tool reports that rather than hiding it. The counts are descriptive; they
+say how often the direction repeated, not that it must.
 
 ---
 
@@ -159,7 +162,7 @@ re-rooting on any node. *Reviewer conflicts* returns exact coauthorship paths
 with the shared works behind each step.
 
 **Evidence index** — free-text search over every indexed trial and paper
-(Elasticsearch, 1,895 trials and 2,586 papers across five disease areas), the
+(Elasticsearch, 2,123 trials and 2,763 papers across six disease areas), the
 same retrieval that proposes candidates when a trial has no identifier link.
 Facets are aggregations over every match, not the page shown: search a drug and
 read off how many of its completed trials have a publication, how many posted a
@@ -207,7 +210,7 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-132 tests, all offline. The statistics are checked against closed-form values
+146 tests, all offline. The statistics are checked against closed-form values
 (Schoenfeld event counts, DerSimonian-Laird pooling, the Egger regression) and
 against synthetic data with a known answer, so a regression in the maths fails
 a test rather than producing a plausible-looking number. The interface is
@@ -250,6 +253,17 @@ ratio must be positive, the interval must bracket it, and the quoted evidence
 must appear in the text — or it is dropped, never guessed. Recovered estimates
 are labelled `source: publication` and reported separately from registry
 postings, so the two are never conflated.
+
+The reduction step decides what the model is allowed to see, so a phrasing it
+does not recognise is an estimate silently lost. Four kinds were, and are
+covered by tests now: Lancet journals set decimals with a middle dot (`0·65`);
+`aHR` and `HRs` carry no word boundary around the bare abbreviation; figure
+captions live in `<fig><caption>`, which a search of a section's own paragraphs
+steps over; and table cells concatenated without a separator weld the header to
+the row beneath it (`EndpointHazard ratio95% CI`), destroying the very words
+the filter matches on. Tables are where secondary-endpoint ratios usually sit.
+`HR` also abbreviates hours and health-related quality of life, so those are
+excluded by name rather than paid for.
 
 Measured on the lung-cancer cohort: 93 trials had open full text, 41 parsed,
 **5 trials recovered** for PFS (A: 65 → 70) and 6 for OS. Model input was
@@ -395,7 +409,7 @@ retraction_check.py   screen a paper's own reference list
 static/               SVG citation graph UI
 data/cohorts/         saved cohorts      data/demo.json  saved graph snapshot
 Dockerfile            python:3.11-slim, no build step
-tests/                132 offline tests, including the executed frontend
+tests/                146 offline tests, including the executed frontend
 ```
 
 ---
@@ -405,13 +419,21 @@ tests/                132 offline tests, including the executed frontend
 Stated plainly so the gaps are not mistaken for claims:
 
 - **The index holds the analysed cohorts, not the literature.** Elasticsearch
-  is populated from the cohorts that have been built (1,895 trials and 2,586
-  papers across five disease areas, and every new cohort is indexed as it is
+  is populated from the cohorts that have been built (2,123 trials and 2,763
+  papers across six disease areas, and every new cohort is indexed as it is
   built). A trial's true paper is only findable by the cascade if it is in the
   index, so candidate search currently mainly *prevents* false links.
-- **Full-text recovery is bounded by open access.** 43% of the eligible papers
-  had open full text and just under half of those parsed; recovery reached 5 of
-  149 trials. The parser is the weak point, not the model.
+- **Full-text recovery is bounded by what Europe PMC will serve.** 43% of the
+  eligible papers had open full text and just under half of those returned an
+  article; recovery reached 5 of 149 trials. The bottleneck is the fetch, not
+  the reduction step: of 97 remembered failures, 97 are fetch errors and none
+  is a parse error. Measured over the 58 articles that did come back, 34
+  contain no hazard ratio anywhere — single-arm phase I/II studies, plain-
+  language summaries and pharmacokinetic papers, none of which can produce one
+  — 21 extract cleanly, and 3 mention hazard ratios only in a methods sentence
+  carrying no value. The sentence filter itself missed no estimate in that
+  sample, though it did leak within papers until the house-style fixes
+  described above.
 - **Cohort size is capped at 400 trials** per analysis, and a very broad disease
   term will be truncated rather than sampled.
 - **The reference screen leans on OpenAlex.** Only entries OpenAlex flags are
