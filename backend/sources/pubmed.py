@@ -127,13 +127,14 @@ def parse_pubmed_article(citation: ET.Element) -> Paper:
 
     # A registry id can appear as a DataBank accession (authoritative) or only
     # in the abstract text (still declared by the article itself).
-    declared_ncts: List[str] = []
+    databank_ncts: List[str] = []
     for bank in citation.findall(".//DataBankList/DataBank"):
         if (bank.findtext("DataBankName") or "").lower() == "clinicaltrials.gov":
             for accession in bank.findall(".//AccessionNumber"):
                 for nct in extract_nct_ids(accession.text):
-                    if nct not in declared_ncts:
-                        declared_ncts.append(nct)
+                    if nct not in databank_ncts:
+                        databank_ncts.append(nct)
+    declared_ncts = list(databank_ncts)
     for nct in extract_nct_ids(" ".join(sections.values())):
         if nct not in declared_ncts:
             declared_ncts.append(nct)
@@ -158,6 +159,7 @@ def parse_pubmed_article(citation: ET.Element) -> Paper:
             text for text in (p.text for p in article.findall(".//PublicationType")) if text
         ],
         registered_trial_ids=declared_ncts,
+        databank_trial_ids=databank_ncts,
         provenance=[
             Provenance(
                 source="pubmed",
@@ -221,3 +223,35 @@ def search_by_nct_id(nct_id: str, limit: int = 50) -> List[str]:
          "retmode": "json", "retmax": limit},
     )
     return json.loads(payload).get("esearchresult", {}).get("idlist", [])
+
+
+def search_by_nct_ids(nct_ids: List[str], chunk: int = 50) -> List[str]:
+    """PMIDs indexed under any of these registry identifiers.
+
+    PubMed's query language allows the whole batch in one search, which is what
+    makes cohort-scale linkage practical: one request per fifty trials instead
+    of one per trial. The result is a merged PMID list that does not say which
+    identifier matched, so callers map it back by reading each record's own
+    declared registry ids.
+    """
+    import json
+
+    found: List[str] = []
+    seen = set()
+    cleaned = [n.strip().upper() for n in nct_ids if n and n.strip()]
+    for start in range(0, len(cleaned), chunk):
+        batch = cleaned[start : start + chunk]
+        term = " OR ".join("{}[si]".format(nct) for nct in batch)
+        try:
+            payload = get_text(
+                "{}/esearch.fcgi".format(EUTILS),
+                {"db": "pubmed", "term": term, "retmode": "json", "retmax": 2000},
+            )
+            ids = json.loads(payload).get("esearchresult", {}).get("idlist", [])
+        except (SourceError, ValueError):
+            continue
+        for pmid in ids:
+            if pmid not in seen:
+                seen.add(pmid)
+                found.append(pmid)
+    return found

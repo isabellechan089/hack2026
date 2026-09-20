@@ -209,3 +209,80 @@ class TestReportLayer(unittest.TestCase):
         payload = self._patched_report("NCT02506153", "36416836")
         self.assertIn("clinicaltrials.gov", payload["trial"]["url"])
         self.assertTrue(all(item["url"] for item in payload["comparison"]["provenance"]))
+
+
+class TestRegistryIdAttribution(unittest.TestCase):
+    """Which identifiers attribute a paper to a trial, and which merely appear."""
+
+    def test_databank_ids_are_kept_apart_from_abstract_mentions(self):
+        paper = load_paper("36416836")
+        # This record's databank field carries its own trial.
+        self.assertEqual(paper.databank_trial_ids, ["NCT02506153"])
+        # The merged list is a superset: it also picks up prose mentions.
+        for nct in paper.databank_trial_ids:
+            self.assertIn(nct, paper.registered_trial_ids)
+
+    def test_an_abstract_mention_alone_does_not_attribute(self):
+        import xml.etree.ElementTree as ET
+
+        from backend.sources.pubmed import parse_pubmed_article
+
+        xml = """<PubmedArticle><MedlineCitation><PMID>1</PMID><Article>
+          <ArticleTitle>A comparison</ArticleTitle>
+          <Abstract><AbstractText Label="METHODS">We compared our trial
+            NCT11111111 against the published NCT22222222.</AbstractText></Abstract>
+          <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+          </Article>
+          <DataBankList><DataBank><DataBankName>ClinicalTrials.gov</DataBankName>
+            <AccessionNumberList><AccessionNumber>NCT11111111</AccessionNumber>
+            </AccessionNumberList></DataBank></DataBankList>
+          </MedlineCitation><PubmedData><ArticleIdList>
+          <ArticleId IdType="pubmed">1</ArticleId></ArticleIdList></PubmedData></PubmedArticle>"""
+        paper = parse_pubmed_article(ET.fromstring(xml))
+        # Both identifiers are stated by the paper...
+        self.assertEqual(paper.registered_trial_ids, ["NCT11111111", "NCT22222222"])
+        # ...but only the first is the trial this paper reports.
+        self.assertEqual(paper.databank_trial_ids, ["NCT11111111"])
+
+
+class TestBulkLinkage(unittest.TestCase):
+    """Batched cohort linkage must agree with the per-trial path."""
+
+    def test_bulk_linkage_attributes_only_via_the_databank_field(self):
+        from unittest.mock import patch
+
+        import backend.publication_bias.linkage as linkage
+        from backend.models.core import Paper
+
+        trial_a = load_trial("NCT02506153")
+        trial_b = load_trial("NCT02142738")
+        reporting = Paper(title="Reports A", pmid="100",
+                          registered_trial_ids=["NCT02506153"],
+                          databank_trial_ids=["NCT02506153"])
+        # Names trial B in its abstract but reports neither.
+        mentioning = Paper(title="Mentions B", pmid="101",
+                           registered_trial_ids=["NCT02142738"],
+                           databank_trial_ids=[])
+
+        with patch.object(linkage.pubmed, "search_by_nct_ids", return_value=["100", "101"]), \
+             patch.object(linkage.pubmed, "get_papers_by_pmid", return_value=[reporting, mentioning]):
+            links = linkage.find_links_bulk([trial_a, trial_b])
+
+        self.assertEqual([l.pmid for l in links["NCT02506153"]], ["100"])
+        # Trial B keeps only its registry references; the prose mention is not a link.
+        self.assertNotIn("101", [l.pmid for l in links["NCT02142738"]])
+
+    def test_registry_references_survive_a_failed_search(self):
+        from unittest.mock import patch
+
+        import backend.publication_bias.linkage as linkage
+        from backend.sources.http import SourceError
+
+        trial = load_trial("NCT02506153")
+        paper = load_paper("36416836")
+        with patch.object(linkage.pubmed, "search_by_nct_ids", side_effect=SourceError("down")), \
+             patch.object(linkage.pubmed, "get_papers_by_pmid", return_value=[paper]):
+            links = linkage.find_links_bulk([trial])
+        # The registry's own reference list still links the publication.
+        self.assertEqual([l.pmid for l in links["NCT02506153"]], ["36416836"])
+        self.assertEqual(links["NCT02506153"][0].match_method, linkage.REGISTRY_REFERENCE)

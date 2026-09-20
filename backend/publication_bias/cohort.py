@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from ..sources import clinical_trials
 from ..sources.http import CACHE_DIR, SourceError
-from .linkage import CohortTrial, enrich_with_openalex, find_links, sponsor_type
+from .linkage import CohortTrial, enrich_with_openalex, find_links_bulk, sponsor_type
 
 COHORT_DIR = os.path.join(os.path.dirname(CACHE_DIR), "data", "cohorts")
 
@@ -71,27 +71,35 @@ def build_cohort(
         built_at=datetime.now(timezone.utc).isoformat(),
     )
 
-    total = len(studies)
-    for index, payload in enumerate(studies, start=1):
+    # Normalize first, then link the whole cohort in one batched pass. Linking
+    # trial by trial costs two PubMed requests each, which is minutes for a
+    # cohort this size and makes an on-demand analysis impossible.
+    normalized = []
+    for payload in studies:
         try:
             trial = clinical_trials.normalize_study(payload)
         except Exception:
             continue
-        if not trial.nct_id:
-            continue
+        if trial.nct_id:
+            normalized.append((trial, clinical_trials.extract_effect_estimates(payload)))
 
-        effects = clinical_trials.extract_effect_estimates(payload)
-        try:
-            links = find_links(trial)
-        except SourceError:
-            # A lookup failure must not be recorded as "no publication found".
-            cohort.excluded.append(
-                {"nct_id": trial.nct_id, "reason": "Publication lookup failed; trial omitted."}
-            )
-            continue
+    total = len(normalized)
+    if progress:
+        progress(0, total, "linking {} trials to the published record".format(total))
 
-        cohort.trials.append(CohortTrial(trial=trial, effects=effects, links=links))
-        if progress:
+    try:
+        links_by_nct = find_links_bulk([trial for trial, _ in normalized])
+    except SourceError:
+        # A lookup failure must never be recorded as "no publication found".
+        cohort.excluded.append(
+            {"nct_id": "*", "reason": "Publication lookup failed; no trial was linked."})
+        links_by_nct = {}
+
+    for index, (trial, effects) in enumerate(normalized, start=1):
+        cohort.trials.append(
+            CohortTrial(trial=trial, effects=effects, links=links_by_nct.get(trial.nct_id, []))
+        )
+        if progress and index % 50 == 0:
             progress(index, total, trial.nct_id)
 
     enrich_with_openalex(cohort.trials)

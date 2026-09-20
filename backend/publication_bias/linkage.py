@@ -257,3 +257,80 @@ def enrich_with_openalex(cohort: Sequence[CohortTrial]) -> int:
             link.doi = link.doi or work.doi
             resolved += 1
     return resolved
+
+
+def find_links_bulk(trials: Sequence[Trial], chunk: int = 50) -> Dict[str, List[PublicationLink]]:
+    """Link a whole cohort to the published record in a handful of requests.
+
+    Doing this per trial costs two PubMed calls each, which is four minutes for
+    a 400-trial cohort and makes an on-demand analysis impossible. Both calls
+    batch: one search covers fifty registry identifiers, and records are fetched
+    fifty at a time, so the same cohort resolves in roughly twenty requests.
+
+    The channels are unchanged -- registry reference list and PubMed's
+    secondary-id index -- only the number of round trips is.
+    """
+    by_nct: Dict[str, List[PublicationLink]] = {t.nct_id: [] for t in trials}
+    registry_pmids: Dict[str, Dict[str, str]] = {
+        t.nct_id: {ref["pmid"]: ref.get("type", "") for ref in t.linked_references if ref.get("pmid")}
+        for t in trials
+    }
+
+    wanted: List[str] = []
+    seen = set()
+    for mapping in registry_pmids.values():
+        for pmid in mapping:
+            if pmid not in seen:
+                seen.add(pmid)
+                wanted.append(pmid)
+
+    try:
+        for pmid in pubmed.search_by_nct_ids([t.nct_id for t in trials], chunk=chunk):
+            if pmid not in seen:
+                seen.add(pmid)
+                wanted.append(pmid)
+    except SourceError:
+        pass
+
+    papers: Dict[str, Paper] = {}
+    for start in range(0, len(wanted), chunk):
+        try:
+            for paper in pubmed.get_papers_by_pmid(wanted[start : start + chunk]):
+                if paper.pmid:
+                    papers[paper.pmid] = paper
+        except SourceError:
+            continue
+
+    # Attribution uses the databank field only. A batched search returns one
+    # merged list, and an identifier that appears merely in a paper's abstract
+    # prose -- a trial it compares against, say -- would otherwise be read as a
+    # publication reporting that trial.
+    declared: Dict[str, List[str]] = {}
+    for paper in papers.values():
+        for nct in paper.databank_trial_ids:
+            declared.setdefault(nct.upper(), []).append(paper.pmid or "")
+
+    for trial in trials:
+        nct = trial.nct_id
+        links: Dict[str, PublicationLink] = {}
+        for pmid, link_type in registry_pmids.get(nct, {}).items():
+            paper = papers.get(pmid)
+            if paper is None:
+                continue
+            score = 0.95 if link_type == "RESULT" else 0.9
+            evidence = "ClinicalTrials.gov record {} lists PMID {} as a {} reference.".format(
+                nct, pmid, link_type or "linked")
+            if nct.upper() in [n.upper() for n in paper.registered_trial_ids]:
+                score = 1.0
+                evidence += " The publication declares this identifier."
+            links[pmid] = _link_from_paper(nct, paper, REGISTRY_REFERENCE, score, evidence)
+
+        for pmid in declared.get(nct.upper(), []):
+            if pmid in links or pmid not in papers:
+                continue
+            links[pmid] = _link_from_paper(
+                nct, papers[pmid], PUBMED_SECONDARY_ID, 1.0,
+                "PubMed indexes PMID {} under registry identifier {}.".format(pmid, nct))
+
+        by_nct[nct] = list(links.values())
+    return by_nct

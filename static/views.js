@@ -22,13 +22,14 @@ async function listCohorts() {
   try {
     const payload = await callJSON('/api/cohorts');
     if (!payload.cohorts.length) return;
-    $('#searchsources').textContent = 'Ready to analyse now: ' + payload.cohorts
-      .map(c => `${c.condition} (${c.endpoint_class.toUpperCase()}, ${c.trials} trials)`).join(' · ');
+    $('#searchsources').textContent = 'Any disease area works; a new cohort takes about ten seconds. '
+      + 'Instant from cache: ' + payload.cohorts
+        .map(c => `${c.condition} (${c.endpoint_class.toUpperCase()})`).join(' · ');
   } catch (e) { /* the hint is a convenience; its absence is not an error */ }
 }
 
 async function runDesign() {
-  if (!guard('rundesign', 'Building the registry cohort and matching it to the published record…')) return;
+  if (!guard('rundesign', 'Building the registry cohort and matching it to the published record. A new disease area takes about ten seconds…')) return;
   try {
     design = await callJSON('/api/design?' + new URLSearchParams({
       condition: $('#condition').value, endpoint: $('#endpoint').value,

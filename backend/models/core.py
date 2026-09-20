@@ -90,8 +90,14 @@ class Paper:
     publication_year: Optional[int] = None
     authors: List[Author] = field(default_factory=list)
     publication_types: List[str] = field(default_factory=list)
-    # NCT ids the publication itself declares (PubMed databank or abstract text).
+    # NCT ids the publication declares, from the PubMed databank field or from
+    # the abstract text. Use this to ask "does this paper state that identifier?"
     registered_trial_ids: List[str] = field(default_factory=list)
+    # NCT ids from the databank field alone. NLM records these when an article
+    # reports a registered trial, so they attribute a paper to a trial. An
+    # identifier that appears only in abstract prose does not: a paper may name
+    # another trial it compares against, or one it merely discusses.
+    databank_trial_ids: List[str] = field(default_factory=list)
     citation_count: Optional[int] = None
     is_retracted: bool = False
     retraction_status: str = "unknown"  # retracted | not_retracted | unknown

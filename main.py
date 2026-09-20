@@ -68,18 +68,9 @@ class Handler(SimpleHTTPRequestHandler):
                 endpoint = query.get('endpoint', ['os'])[0]
                 if endpoint not in ('os', 'pfs'):
                     raise ValueError('endpoint must be os or pfs.')
-                # Building a cohort from the live registry takes minutes, which
-                # would hang the request and the demo. Unless a rebuild is asked
-                # for explicitly, refuse fast and say which cohorts are ready.
+                # A saved cohort answers instantly; anything else is built live,
+                # which batched linkage brings down to roughly ten seconds.
                 rebuild = query.get('rebuild', [''])[0] == '1'
-                if not rebuild and not os.path.exists(cohort_path(condition, endpoint)):
-                    ready = ', '.join(
-                        '{} ({})'.format(c['condition'], c['endpoint_class'])
-                        for c in available_cohorts()) or 'none'
-                    raise ValueError(
-                        'No saved cohort for "{}" ({}). Ready to analyse now: {}. '
-                        'Building a new cohort takes several minutes; add &rebuild=1 '
-                        'to do it anyway.'.format(condition, endpoint, ready))
                 cohort = load_or_build(
                     condition,
                     endpoint_class=endpoint,
@@ -87,6 +78,10 @@ class Handler(SimpleHTTPRequestHandler):
                     max_studies=min(400, int(query.get('max_studies', ['300'])[0])),
                     rebuild=rebuild,
                 )
+                if not cohort.trials:
+                    raise ValueError(
+                        'No completed trials with posted results found for "{}". Try a '
+                        'broader disease term.'.format(condition))
                 if parsed.path == '/api/cohort':
                     return self.reply(describe(cohort))
                 return self.reply(analyze(

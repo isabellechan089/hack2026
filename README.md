@@ -78,9 +78,8 @@ Five views over one evidence graph, grouped the way the product is:
 pipeline in the browser: the A/B/C composition of the cohort, linkage rates by
 result direction and significance, the two pooled priors as a forest plot, the
 power your design actually delivers, the sensitivity sweep, and the back-test.
-Saved cohorts answer in well under a second; a condition with no saved cohort
-fails immediately and names the ones that are ready rather than hanging for
-minutes. *Trial ↔ paper* takes a registry identifier and shows which publication
+Any disease area works: a saved cohort answers in under a second, and a new one
+builds live in about ten seconds. *Trial ↔ paper* takes a registry identifier and shows which publication
 actually reports the trial, with the field-by-field comparison.
 
 **Research integrity** — *Check my sources* screens a paper's whole reference
@@ -130,7 +129,7 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-85 tests, all offline. The statistics are checked against closed-form values
+89 tests, all offline. The statistics are checked against closed-form values
 (Schoenfeld event counts, DerSimonian-Laird pooling) and against synthetic data
 with a known answer, so a regression in the maths fails a test rather than
 producing a plausible-looking number.
@@ -159,11 +158,15 @@ ClinicalTrials.gov ──► cohort ──► posted results (hazard ratios)
 ### Linking trials to publications
 
 Three channels, most authoritative first, because a false "unpublished" verdict
-is the most damaging error this system can make:
+is the most damaging error this system can make. All of them batch: one PubMed
+search covers fifty registry identifiers and records are fetched fifty at a
+time, so a 400-trial cohort links in about ten seconds rather than four minutes.
 
 1. `nct_registry_reference` — the registry lists a PMID.
 2. `nct_pubmed_si` — PubMed indexes the NCT id as a secondary source id. This
-   catches publications the registry never listed.
+   catches publications the registry never listed. Attribution uses that
+   databank field alone: an identifier appearing only in a paper's abstract
+   prose — a trial it compares against, say — is recorded but does not link.
 3. `fuzzy` — deterministic metadata scoring (investigator overlap, intervention,
    condition, enrollment, dates, sponsor), used only when neither identifier
    channel returns anything.
@@ -277,9 +280,8 @@ Stated plainly so the gaps are not mistaken for claims:
   the retrieval layer in front of it that is missing.
 - **No LLM adjudication.** The middle-confidence branch of the matching cascade
   falls through to "no link identified" rather than to a cheap model.
-- **The design view only runs saved cohorts.** Two are shipped (NSCLC, OS and
-  PFS). Any other condition needs a multi-minute rebuild, which the interface
-  refuses rather than hanging; `&rebuild=1` forces it.
+- **Cohort size is capped at 400 trials** per analysis, and a very broad disease
+  term will be truncated rather than sampled.
 - **The reference screen leans on OpenAlex.** Only entries OpenAlex flags are
   confirmed against Crossref, so an unflagged reference was not individually
   checked. `deep=1` checks every one, at roughly a hundred times the API calls.
