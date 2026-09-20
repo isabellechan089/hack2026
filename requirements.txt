@@ -1,1 +1,4 @@
 requests>=2.32,<3
+
+# legacy_plot.py (the superseded matplotlib rendering of the citation graph)
+# additionally needs networkx and matplotlib. Nothing else in the project does.
