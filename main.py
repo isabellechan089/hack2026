@@ -251,11 +251,82 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply({'error': 'OpenAlex could not complete this lookup.'}, 502)
         except Exception:
             return self.reply({'error': 'This conflict check could not be completed.'}, 502)
+def readiness():
+    """What is installed and configured, for someone running this for the first time.
+
+    Nothing here prints a secret. A key is reported as set or not set, never
+    echoed, because this output is the first thing anyone pastes into a chat
+    when asking why the app will not start.
+    """
+    import platform
+    from backend import config
+
+    lines = ['  python          ' + platform.python_version()]
+
+    missing = []
+    for name in ('requests', 'numpy', 'scipy', 'networkx', 'elasticsearch'):
+        try:
+            __import__(name)
+        except ImportError:
+            missing.append(name)
+    required = [m for m in missing if m != 'elasticsearch']
+    if required:
+        lines.append('  packages        MISSING ' + ', '.join(required)
+                     + '  → venv/bin/python -m pip install -r requirements.txt')
+    elif missing:
+        lines.append('  packages        core ok · elasticsearch not installed, so the search tab is off')
+    else:
+        lines.append('  packages        all present')
+
+    try:
+        saved = len(available_cohorts())
+    except Exception:
+        saved = 0
+    lines.append('  saved cohorts   {}{}'.format(
+        saved, ', design answers offline' if saved else ' — the design tab will build one live'))
+
+    demos = sum((ROOT / 'data' / n).exists() for n in ('demo.json', 'demo_sources.json'))
+    lines.append('  demo snapshots  {} of 2'.format(demos))
+
+    elastic_settings = config.elastic()
+    env = []
+    env.append('CONTACT_EMAIL ' + ('set' if config.get('CONTACT_EMAIL') else 'not set'))
+    env.append('NCBI_API_KEY ' + ('set' if config.get('NCBI_API_KEY') else 'not set'))
+    env.append('Elasticsearch ' + ('configured' if elastic_settings['api_key']
+               and (elastic_settings['url'] or elastic_settings['cloud_id']) else 'not configured'))
+    env.append('OpenAI ' + ('configured' if config.openai_key() else 'not configured'))
+    lines.append('  .env            ' + ' · '.join(env))
+
+    off = []
+    if 'elasticsearch' in missing or not (elastic_settings['api_key']
+                                          and (elastic_settings['url'] or elastic_settings['cloud_id'])):
+        off.append('search the index')
+    if not config.openai_key():
+        off.append('full-text recovery and candidate adjudication')
+    lines.append('')
+    lines.append('  working         bias-aware design · trial vs paper · check my sources · '
+                 'retraction spread · reviewer conflicts')
+    if off:
+        lines.append('  needs a key     ' + ' · '.join(off) + '   (copy .env.example to .env)')
+    return lines
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8000)
     parser.add_argument('--host', default='127.0.0.1',
                         help='bind address; 0.0.0.0 inside a container or for a LAN demo')
+    parser.add_argument('--check', action='store_true',
+                        help='print what is installed and configured, then exit')
     args = parser.parse_args()
-    print(f'Evidence Atlas → http://{args.host}:{args.port}', flush=True)
-    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+    print('\n'.join(readiness()), flush=True)
+    if args.check:
+        raise SystemExit(0)
+    print(f'\nEvidence Atlas → http://{args.host}:{args.port}', flush=True)
+    try:
+        ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
+    except OSError as error:
+        raise SystemExit(
+            '\nCould not bind {}:{} — {}.\nAnother copy is probably already running. '
+            'Try --port 8001, or stop it with:  pkill -f "main.py --port {}"'.format(
+                args.host, args.port, error.strerror or error, args.port))

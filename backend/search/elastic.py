@@ -14,7 +14,15 @@ contains the terms, and the explanation says which.
 
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from elasticsearch import Elasticsearch, helpers
+# Search enriches the app but nothing else depends on it, so a missing package
+# must not stop the server from starting. Before this guard, a teammate who had
+# not installed every requirement got an ImportError on launch and no app at
+# all, when the only thing they were missing was one optional tab.
+try:
+    from elasticsearch import Elasticsearch, helpers
+except ImportError:  # pragma: no cover - exercised by a test that blocks the import
+    Elasticsearch = None
+    helpers = None
 
 from .. import config
 from ..models.core import Paper, Trial
@@ -22,16 +30,20 @@ from ..models.core import Paper, Trial
 TRIALS = "trialtrace-trials"
 WORKS = "trialtrace-works"
 
-_client: Optional[Elasticsearch] = None
+_client: Optional["Elasticsearch"] = None
 
 
 class SearchUnavailable(RuntimeError):
     pass
 
 
-def client() -> Elasticsearch:
+def client() -> "Elasticsearch":
     global _client
     if _client is None:
+        if Elasticsearch is None:
+            raise SearchUnavailable(
+                "The elasticsearch package is not installed. Run: "
+                "venv/bin/python -m pip install -r requirements.txt")
         settings = config.elastic()
         if not settings["api_key"] or not (settings["url"] or settings["cloud_id"]):
             raise SearchUnavailable("Elasticsearch is not configured.")

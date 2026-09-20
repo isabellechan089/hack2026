@@ -112,7 +112,25 @@ venv/bin/python -m pip install -r requirements.txt
 
 ```sh
 venv/bin/python main.py       # then open http://127.0.0.1:8000
+venv/bin/python main.py --check   # print what is installed and configured, then exit
 ```
+
+`--check` is the first thing to run on a new machine. It reports the Python
+version, which packages are present, how many cohorts are saved, and which
+features are switched off for want of a key. It never prints a key's value.
+
+**Running it for the first time.** A fresh clone needs only
+`pip install -r requirements.txt`. No `.env` is required: the bias-aware design
+view, the trial comparison, the reference check, the retraction graph and the
+reviewer check all work without one, because the saved cohorts and demo
+snapshots are committed. Two things do need keys, and the app says so rather
+than failing: *Search the index* needs Elasticsearch, and full-text recovery
+and candidate adjudication need an OpenAI key. Copy `.env.example` to `.env`
+to add them.
+
+If the server will not start, the usual causes are a system Python instead of
+the virtual environment, which shows as `No module named requests`, or port
+8000 already in use, which the app now reports with the command to clear it.
 
 Or in a container, with no local Python at all:
 

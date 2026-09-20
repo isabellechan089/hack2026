@@ -260,5 +260,51 @@ class ProvenanceAndOverviewTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class FirstRunTests(unittest.TestCase):
+    """What someone gets on a machine that is not this one."""
+
+    def test_the_server_starts_without_the_optional_search_package(self):
+        # Elasticsearch powers one tab. Before this was guarded, not having the
+        # package meant an ImportError on launch and no application at all.
+        import subprocess
+        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script = (
+            "import sys\n"
+            "class Block:\n"
+            "    def find_module(self, name, path=None):\n"
+            "        return self if name.split('.')[0] == 'elasticsearch' else None\n"
+            "    def load_module(self, name):\n"
+            "        raise ImportError(name)\n"
+            "sys.meta_path.insert(0, Block())\n"
+            "import main\n"
+            "print('ok')\n"
+        )
+        result = subprocess.run([sys.executable, "-c", script], cwd=repo,
+                                capture_output=True, text=True, timeout=120)
+        self.assertIn("ok", result.stdout, result.stderr[-600:])
+
+    def test_readiness_reports_what_is_missing_without_printing_a_secret(self):
+        import main
+        secrets = {"OPENAI_API_KEY": "sk-test-SHOULD-NEVER-APPEAR",
+                   "ELASTIC_API_KEY": "elastic-SHOULD-NEVER-APPEAR",
+                   "NCBI_API_KEY": "ncbi-SHOULD-NEVER-APPEAR"}
+        saved = {k: os.environ.get(k) for k in secrets}
+        os.environ.update(secrets)
+        try:
+            text = "\n".join(main.readiness())
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+        for value in secrets.values():
+            self.assertNotIn(value, text, "readiness leaked a key value")
+        self.assertIn("python", text)
+        self.assertIn("saved cohorts", text)
+        # It must say which features are off, not merely that something is unset.
+        self.assertIn("working", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
