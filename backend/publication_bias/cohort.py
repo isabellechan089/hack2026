@@ -296,7 +296,10 @@ def available_cohorts() -> List[Dict[str, str]]:
         return []
     found = []
     for name in sorted(os.listdir(COHORT_DIR)):
-        if not name.endswith(".json"):
+        # A "-recovered" snapshot is the same cohort with full-text estimates
+        # attached, not a separate one; listing it twice would offer the reader
+        # a choice that does not exist.
+        if not name.endswith(".json") or name.endswith("-recovered.json"):
             continue
         try:
             with open(os.path.join(COHORT_DIR, name), "r", encoding="utf-8") as handle:

@@ -1,6 +1,11 @@
 // Small inline-SVG chart primitives.
 //
 // Shared rules, applied by every primitive here:
+//  * every plot carries a labelled scale, so a bar's length can be read as a
+//    number rather than only compared to its neighbour,
+//  * geometry is in pixel-like viewBox units with the default
+//    preserveAspectRatio, so glyphs are never stretched and the chart's height
+//    follows from its content instead of from the width of its container,
 //  * data ends are rounded 4px and anchored to the baseline; lines are 2px,
 //  * touching fills are separated by a 2px gap in the surface colour rather
 //    than by a stroke, so the separation reads at any zoom,
@@ -21,18 +26,49 @@ const CH = {
   int: v => v == null ? '--' : Number(v).toLocaleString(),
 };
 
-/** Horizontal bars. rows: [{label, value, display, color?, note?}] */
+// The drawing width every primitive works in. Height comes from the content,
+// so the rendered aspect ratio is set here rather than by the container.
+const CW = 800;
+
+/** Round numbers for an axis that starts at zero: 1, 2, 2.5 or 5 x 10^n. */
+function niceTicks(max, count = 4) {
+  if (!(max > 0)) return [0];
+  const raw = max / count, power = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].find(m => m * power >= raw) * power;
+  const out = [];
+  for (let v = 0; v <= max + step * 0.001; v += step) out.push(Number(v.toPrecision(12)));
+  return out;
+}
+
+/** Horizontal bars against a labelled scale. rows: [{label, value, display, color?, note?}] */
 function hbar(rows, opts = {}) {
-  const max = opts.max ?? Math.max(...rows.map(r => r.value || 0), 0.0001);
-  const w = 100, labelW = opts.labelWidth ?? 40, barW = w - labelW - 14;
-  const rowH = 30, h = rows.length * rowH + 6;
-  let out = `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${CH.esc(opts.title || 'bar chart')}" preserveAspectRatio="none">`;
+  const isShare = opts.max === 1;
+  const raw = opts.max ?? Math.max(...rows.map(r => r.value || 0), 1e-9);
+  const ticks = isShare ? [0, 0.25, 0.5, 0.75, 1] : niceTicks(raw);
+  // The scale ends on a tick, so the longest bar never runs past the axis.
+  const max = Math.max(raw, ticks[ticks.length - 1]);
+  const rowH = 30, barH = 16, axisH = 30, top = 4;
+  const h = rows.length * rowH + axisH + top;
+  const baseline = top + rows.length * rowH;
+  const X = v => Math.max(0, Math.min(1, (v || 0) / max)) * CW;
+  const fmt = v => isShare ? CH.pct(v) : CH.int(v);
+
+  let out = `<svg class="chart" viewBox="0 0 ${CW} ${h}" role="img" aria-label="${CH.esc(opts.title || 'bar chart')}">`;
+  // Gridlines first, so the bars paint over them.
+  for (const t of ticks) {
+    out += `<line x1="${X(t).toFixed(1)}" y1="${top}" x2="${X(t).toFixed(1)}" y2="${baseline}" stroke="${VIZ.grid}" stroke-width="1"/>`;
+  }
   rows.forEach((r, i) => {
-    const y = i * rowH + 6, len = Math.max(0.6, (r.value || 0) / max * barW);
-    const color = r.color || VIZ.accent;
+    const y = top + i * rowH + (rowH - barH) / 2;
+    const len = Math.max(2, X(r.value));
     out += `<g><title>${CH.esc(r.label)}: ${CH.esc(r.display ?? r.value)}${r.note ? ' — ' + CH.esc(r.note) : ''}</title>`
-      + `<rect x="0" y="${y}" width="${w}" height="${rowH - 6}" fill="transparent"/>`
-      + `<rect x="${labelW}" y="${y + 3}" width="${len}" height="12" rx="4" fill="${color}"/></g>`;
+      + `<rect x="0" y="${top + i * rowH}" width="${CW}" height="${rowH}" fill="transparent"/>`
+      + `<rect x="0" y="${y}" width="${len.toFixed(1)}" height="${barH}" rx="4" fill="${r.color || VIZ.accent}"/></g>`;
+  });
+  out += `<line x1="0" y1="${baseline}" x2="${CW}" y2="${baseline}" stroke="${VIZ.grid}" stroke-width="1.5"/>`;
+  ticks.forEach((t, i) => {
+    const anchor = i === 0 ? 'start' : i === ticks.length - 1 ? 'end' : 'middle';
+    out += `<text x="${X(t).toFixed(1)}" y="${baseline + 19}" font-size="15" fill="${VIZ.muted}" text-anchor="${anchor}">${CH.esc(fmt(t))}</text>`;
   });
   out += '</svg><div class="chartlabels">';
   rows.forEach(r => {
@@ -65,28 +101,47 @@ function stackbar(segments, opts = {}) {
   return out + '</div>';
 }
 
-/** Forest plot on a log scale. rows: [{label, value, lo, hi, color, k, sub}] */
+/** Forest plot on a log hazard-ratio scale. rows: [{label, value, lo, hi, color, k, sub}] */
 function forest(rows, opts = {}) {
   const usable = rows.filter(r => r.value);
   if (!usable.length) return '<p class="empty">No poolable estimate for this cohort.</p>';
   const lo = Math.min(...usable.map(r => r.lo ?? r.value), 1) * 0.92;
   const hi = Math.max(...usable.map(r => r.hi ?? r.value), 1) * 1.08;
   const L = Math.log(lo), H = Math.log(hi);
-  const X = v => (Math.log(v) - L) / (H - L) * 100;
-  const rowH = 34, h = rows.length * rowH + 22;
-  let out = `<svg class="chart forest" viewBox="0 0 100 ${h}" role="img" aria-label="${CH.esc(opts.title || 'pooled effect estimates')}" preserveAspectRatio="none">`;
-  // Reference line at a hazard ratio of 1: no difference between arms.
-  if (lo < 1 && hi > 1) out += `<line x1="${X(1)}" y1="0" x2="${X(1)}" y2="${h - 20}" stroke="${VIZ.grid}" stroke-width="0.5" stroke-dasharray="2 2"/>`;
+  const pad = 26;                        // room for the end tick labels
+  const X = v => pad + (Math.log(v) - L) / (H - L) * (CW - pad * 2);
+  const rowH = 42, axisH = 32, top = 8;
+  const h = rows.length * rowH + axisH + top;
+  const baseline = top + rows.length * rowH;
+
+  // Ticks at hazard ratios a reader recognises, thinned to at most six.
+  const candidates = [0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 2, 2.5];
+  let ticks = candidates.filter(t => t >= lo && t <= hi);
+  while (ticks.length > 6) ticks = ticks.filter((t, i) => t === 1 || i % 2 === 0);
+  if (!ticks.length) ticks = [lo, hi];
+
+  let out = `<svg class="chart forest" viewBox="0 0 ${CW} ${h}" role="img" aria-label="${CH.esc(opts.title || 'pooled effect estimates')}">`;
+  for (const t of ticks) {
+    const isNull = t === 1;
+    out += `<line x1="${X(t).toFixed(1)}" y1="${top}" x2="${X(t).toFixed(1)}" y2="${baseline}" stroke="${isNull ? VIZ.muted : VIZ.grid}" stroke-width="${isNull ? 1.5 : 1}"${isNull ? ' stroke-dasharray="4 4"' : ''}/>`;
+  }
   rows.forEach((r, i) => {
     if (!r.value) return;
-    const y = i * rowH + 18, c = r.color || VIZ.accent;
-    if (r.lo && r.hi) out += `<line x1="${X(r.lo)}" y1="${y}" x2="${X(r.hi)}" y2="${y}" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`;
+    const y = top + i * rowH + rowH / 2, c = r.color || VIZ.accent;
+    if (r.lo && r.hi) {
+      out += `<line x1="${X(r.lo).toFixed(1)}" y1="${y}" x2="${X(r.hi).toFixed(1)}" y2="${y}" stroke="${c}" stroke-width="3" stroke-linecap="round"/>`
+        + `<line x1="${X(r.lo).toFixed(1)}" y1="${y - 6}" x2="${X(r.lo).toFixed(1)}" y2="${y + 6}" stroke="${c}" stroke-width="2"/>`
+        + `<line x1="${X(r.hi).toFixed(1)}" y1="${y - 6}" x2="${X(r.hi).toFixed(1)}" y2="${y + 6}" stroke="${c}" stroke-width="2"/>`;
+    }
     out += `<g><title>${CH.esc(r.label)}: HR ${CH.num(r.value, 3)}${r.lo ? ` (95% CI ${CH.num(r.lo, 3)}–${CH.num(r.hi, 3)})` : ''}${r.k ? `, ${r.k} trials` : ''}</title>`
-      + `<circle cx="${X(r.value)}" cy="${y}" r="3.2" fill="${c}" stroke="${VIZ.surface}" stroke-width="1.2"/></g>`;
+      + `<circle cx="${X(r.value).toFixed(1)}" cy="${y}" r="7" fill="${c}" stroke="${VIZ.surface}" stroke-width="2"/></g>`;
   });
-  out += `<text x="0" y="${h - 4}" font-size="5" fill="${VIZ.muted}">HR ${CH.num(lo, 2)}</text>`
-    + (lo < 1 && hi > 1 ? `<text x="${X(1)}" y="${h - 4}" font-size="5" fill="${VIZ.muted}" text-anchor="middle">1.0</text>` : '')
-    + `<text x="100" y="${h - 4}" font-size="5" fill="${VIZ.muted}" text-anchor="end">HR ${CH.num(hi, 2)}</text></svg>`;
+  out += `<line x1="0" y1="${baseline}" x2="${CW}" y2="${baseline}" stroke="${VIZ.grid}" stroke-width="1.5"/>`;
+  ticks.forEach(t => {
+    out += `<text x="${X(t).toFixed(1)}" y="${baseline + 19}" font-size="15" fill="${t === 1 ? VIZ.ink : VIZ.muted}" text-anchor="middle">${t === 1 ? '1.0' : CH.num(t, t < 1 ? 2 : 2)}</text>`;
+  });
+  out += `<text x="0" y="${h - 1}" font-size="13" fill="${VIZ.muted}">← larger treatment effect</text>`
+    + `<text x="${CW}" y="${h - 1}" font-size="13" fill="${VIZ.muted}" text-anchor="end">no difference at HR 1.0 →</text></svg>`;
   out += '<div class="chartlabels">';
   rows.forEach(r => {
     out += `<div class="chartrow"><span class="chip" style="background:${r.color || VIZ.accent}"></span>`
@@ -108,23 +163,32 @@ function meter(value, target, label, note) {
     + `</div>${note ? `<span class="rownote">${CH.esc(note)}</span>` : ''}</div>`;
 }
 
-/** A single line over an ordered x. points: [{x, y, label}] */
+/** A single line over an ordered x, with a labelled y scale. points: [{y, label}] */
 function linechart(points, opts = {}) {
   const ys = points.map(p => p.y).filter(v => v != null);
   if (ys.length < 2) return '';
   const ymin = Math.min(...ys), ymax = Math.max(...ys), span = (ymax - ymin) || 1;
-  const h = 70, pad = 8;
-  const X = i => i / (points.length - 1) * 100;
-  const Y = v => h - pad - (v - ymin) / span * (h - pad * 2);
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(2)},${Y(p.y).toFixed(2)}`).join(' ');
-  let out = `<svg class="chart" viewBox="0 0 100 ${h}" role="img" aria-label="${CH.esc(opts.title || 'sensitivity')}" preserveAspectRatio="none">`
-    + `<line x1="0" y1="${Y(ymin)}" x2="100" y2="${Y(ymin)}" stroke="${VIZ.grid}" stroke-width="0.5"/>`
-    + `<path d="${path}" fill="none" stroke="${VIZ.accent}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+  const padL = 56, padR = 16, padT = 14, padB = 34, plotH = 150;
+  const h = plotH + padT + padB;
+  const X = i => padL + i / (points.length - 1) * (CW - padL - padR);
+  const Y = v => padT + plotH - (v - ymin) / span * plotH;
+  const path = points.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+  const gridY = [ymin, ymin + span / 2, ymax];
+
+  let out = `<svg class="chart line" viewBox="0 0 ${CW} ${h}" role="img" aria-label="${CH.esc(opts.title || 'sensitivity')}">`;
+  for (const v of gridY) {
+    out += `<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${CW - padR}" y2="${Y(v).toFixed(1)}" stroke="${VIZ.grid}" stroke-width="1"/>`
+      + `<text x="${padL - 8}" y="${(Y(v) + 5).toFixed(1)}" font-size="15" fill="${VIZ.muted}" text-anchor="end">${CH.num(v, 2)}</text>`;
+  }
+  out += `<path d="${path}" fill="none" stroke="${VIZ.accent}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
   points.forEach((p, i) => {
-    out += `<g><title>${CH.esc(p.label)}</title><circle cx="${X(i)}" cy="${Y(p.y)}" r="2.6" fill="${VIZ.accent}" stroke="${VIZ.surface}" stroke-width="1.2"/></g>`;
+    out += `<g><title>${CH.esc(p.label)}</title>`
+      + `<rect x="${(X(i) - 14).toFixed(1)}" y="${padT}" width="28" height="${plotH}" fill="transparent"/>`
+      + `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="5" fill="${VIZ.accent}" stroke="${VIZ.surface}" stroke-width="2"/></g>`;
   });
-  return out + `<text x="0" y="${h - 1}" font-size="5" fill="${VIZ.muted}">${CH.esc(opts.xlo || '')}</text>`
-    + `<text x="100" y="${h - 1}" font-size="5" fill="${VIZ.muted}" text-anchor="end">${CH.esc(opts.xhi || '')}</text></svg>`;
+  return out + `<text x="${padL}" y="${h - 12}" font-size="15" fill="${VIZ.muted}">${CH.esc(opts.xlo || '')}</text>`
+    + `<text x="${CW - padR}" y="${h - 12}" font-size="15" fill="${VIZ.muted}" text-anchor="end">${CH.esc(opts.xhi || '')}</text>`
+    + `<text x="${padL - 8}" y="${h - 12}" font-size="13" fill="${VIZ.muted}" text-anchor="end">${CH.esc(opts.ylabel || 'pooled HR')}</text></svg>`;
 }
 
 /** Funnel plot: one trial per point, effect against precision, on a log-HR axis.
@@ -143,7 +207,9 @@ function funnelplot(f, opts = {}) {
   const Y = se => padT + se / maxSe * (H - padT - padB);
   const centre = f.pooled_log_hr;
   const colorFor = p => p.category === 'registry_only_with_result' ? VIZ.accent : VIZ.published;
-  let out = `<svg class="chart funnel" viewBox="0 0 ${W} ${H}" role="img" aria-label="${CH.esc(opts.title || 'funnel plot')}" preserveAspectRatio="none">`;
+  // The CSS pins this box to the same 100:64 ratio as the viewBox, so the
+  // default preserveAspectRatio is exact and the tick labels are not stretched.
+  let out = `<svg class="chart funnel" viewBox="0 0 ${W} ${H}" role="img" aria-label="${CH.esc(opts.title || 'funnel plot')}">`;
   // Pseudo 95% region around the pooled estimate: a wedge from the apex down.
   if (centre != null && bounds.length) {
     const left = bounds.map(b => `${X(Math.log(b.lower)).toFixed(2)},${Y(b.se).toFixed(2)}`);

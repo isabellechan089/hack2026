@@ -51,6 +51,80 @@ async function runDesign() {
   finally { release('rundesign'); }
 }
 
+// A plain-language reading of THIS cohort's actual numbers. The charts show
+// what happened; this says what it means, and says it differently when the
+// cohort does not behave the way the hypothesis predicts.
+function readingGuide(d) {
+  const c = d.cohort, cat = c.categories, pr = d.priors;
+  const lit = pr.literature_only, reg = pr.registry_aware;
+  const sig = (d.linkage || {}).by_significance || {};
+  const yes = sig.significant || {}, no = sig.not_significant || {};
+  const con = (d.design || {}).consequence;
+  const assumed = d.design ? d.design.assumed_hazard_ratio : null;
+  const target = d.design ? d.design.target_power : null;
+  const steps = [];
+
+  steps.push(`<b>What is in the cohort.</b> Every completed phase ${CH.esc(c.phases.join('/'))}
+    ${CH.esc(c.condition)} trial that posted results to ClinicalTrials.gov: ${CH.int(c.trials)} of them.
+    Only ${CH.int(c.with_usable_effect)} posted a hazard ratio with a confidence interval, which is the
+    only form of result that can be pooled with the others. The remaining ${CH.int(cat.C_no_usable_result)}
+    are counted and described in section 1, never filled in with a guessed value.`);
+
+  if (yes.n && no.n) {
+    const gap = (yes.linkage_rate || 0) - (no.linkage_rate || 0);
+    steps.push(gap > 0.05
+      ? `<b>The test, in section 2.</b> Among the trials that did post a usable number,
+         ${CH.pct(yes.linkage_rate)} of the statistically significant ones have a publication we could
+         find, against ${CH.pct(no.linkage_rate)} of the ones that were not significant. Trials that
+         worked are easier to find in the literature than trials that did not. That gap is the whole
+         premise, and it is counted rather than assumed.`
+      : gap < -0.05
+      ? `<b>The test, in section 2.</b> Here the expected pattern does not appear: the significant
+         trials were linked to a publication ${CH.pct(yes.linkage_rate)} of the time, and the ones that
+         were not significant ${CH.pct(no.linkage_rate)} of the time. Read this cohort as evidence
+         against strong selection, not as a broken result. The tool reports the direction it finds.`
+      : `<b>The test, in section 2.</b> Significant and non-significant trials were linked at almost the
+         same rate, ${CH.pct(yes.linkage_rate)} against ${CH.pct(no.linkage_rate)}. No meaningful
+         selection is observable in this cohort.`);
+  }
+
+  if (lit.hazard_ratio && reg.hazard_ratio) {
+    const moved = reg.hazard_ratio - lit.hazard_ratio;
+    const direction = Math.abs(moved) < 0.005 ? 'barely moved'
+      : moved > 0 ? 'moved toward 1.0, meaning a weaker average effect'
+      : 'moved away from 1.0, meaning a stronger average effect';
+    steps.push(`<b>The correction, in section 3.</b> The same cohort is pooled twice. Literature-only
+      uses the ${CH.int(lit.k)} trials a reader could have found: HR ${CH.num(lit.hazard_ratio, 3)}.
+      Registry-aware adds the ${CH.int(pr.trials_added)} whose results exist only in the registry:
+      HR ${CH.num(reg.hazard_ratio, 3)}. Adding them ${direction}. A hazard ratio below 1 favours the
+      treatment, so the lower the number, the larger the benefit it claims.`);
+  }
+
+  if (con && assumed) {
+    steps.push(`<b>What it costs you, in section 5.</b> You assumed HR ${CH.num(assumed)}, which needs
+      ${CH.int(con.planned_events)} events to reach ${CH.pct(target)} power. If the registry-aware
+      estimate of HR ${CH.num(reg.hazard_ratio)} is closer to the truth, those same
+      ${CH.int(con.planned_events)} events deliver ${CH.pct(con.delivered_power_if_registry_aware_is_true)}
+      instead. That is the headline: a trial that looks adequately powered on paper, and is not.`);
+  }
+
+  if (reg.hazard_ratio && reg.hazard_ratio > 0.9) {
+    steps.push(`<b>Read this cohort with care.</b> Its pooled estimate sits close to HR 1.0, so the
+      average trial in it showed little benefit. An assumed HR of ${CH.num(assumed)} is then a strong
+      claim, and the very large event counts in section 5 are the arithmetic of chasing an effect this
+      evidence base does not support. That is a real finding about the disease area, not a failure of
+      the calculation.`);
+  }
+
+  return `<section class="vizcard guide"><h3>How to read this page</h3>
+    <p class="vizsub">Written from this cohort's own numbers, so it changes when the cohort does.</p>
+    ${steps.map(t => `<p class="guidestep">${t}</p>`).join('')}
+    <p class="rownote">Sections 4, 6 and 7 are the checks: does the missing evidence sit where selection
+    would put it, how much could the genuinely unknown trials move the answer, and does the correction
+    predict held-out trials better than the literature does.</p>
+  </section>`;
+}
+
 function renderDesign() {
   const d = design, c = d.cohort, cat = c.categories, p = d.priors, lit = p.literature_only, reg = p.registry_aware;
   const rows = d.design.rows, con = d.design.consequence, back = d.backtest, sens = d.sensitivity;
@@ -67,6 +141,7 @@ function renderDesign() {
 
   $('#designpanel').innerHTML = `
 <div class="sectionhead"><div><span class="eyebrow">BIAS-AWARE TRIAL DESIGN</span><h2>${CH.esc(c.condition)} · ${CH.esc(c.endpoint_class.toUpperCase())} · phase ${CH.esc(c.phases.join('/'))}</h2></div><div class="sourcepill">● ${CH.int(c.trials)} completed registered trials with posted results</div></div>
+${readingGuide(d)}
 ${src.registry_trials ? `<p class="rownote provenance">Sources · ${CH.int(src.registry_trials)} registrations from ClinicalTrials.gov · ${CH.int(src.publications_linked)} publications via PubMed · ${CH.int(src.openalex_resolved)} resolved in the OpenAlex graph${src.retracted_publications ? ` · ${CH.int(src.retracted_publications)} carry a retraction flag` : ' · none flagged as retracted'}</p>` : ''}
 
 <div class="vizgrid">
@@ -229,7 +304,7 @@ function renderLedger() {
     <div class="stat"><b>${CH.int(cache.hits_this_process)}</b><span><strong>Answered from cache</strong><br>${CH.int(cache.tokens_avoided_this_process)} tokens not re-sent this session</span></div>
     <div class="stat"><b>${CH.int(budget.calls_this_process)} / ${CH.int(budget.max_calls)}</b><span><strong>Budget used</strong><br>hard cap on paid calls per process</span></div>
   </div>
-  ${purposes.length ? hbar(purposes.map(([k, v]) => ({label: PURPOSE[k] || k, value: v.prompt_tokens + v.completion_tokens, display: CH.int(v.prompt_tokens + v.completion_tokens) + ' tokens', note: `${CH.int(v.calls)} calls · ${usd(v.cost_usd)}`, color: k === 'baseline_whole_paper' ? VIZ.context : VIZ.accent})), {title: 'tokens by purpose', labelWidth: 0}) : '<p class="empty">No model calls have been made yet.</p>'}
+  ${purposes.length ? hbar(purposes.map(([k, v]) => ({label: PURPOSE[k] || k, value: v.prompt_tokens + v.completion_tokens, display: CH.int(v.prompt_tokens + v.completion_tokens) + ' tokens', note: `${CH.int(v.calls)} calls · ${usd(v.cost_usd)}`, color: k === 'baseline_whole_paper' ? VIZ.context : VIZ.accent})), {title: 'tokens by purpose'}) : '<p class="empty">No model calls have been made yet.</p>'}
   <p class="rownote">Four things keep this small: the model reads sentences, never papers; the smallest tier answers first and the larger one is consulted only when validation fails; identical requests are served from a disk cache; and a hard cap refuses rather than overspends.</p>`;
 }
 

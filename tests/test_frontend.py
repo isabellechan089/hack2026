@@ -96,6 +96,19 @@ class FrontendBehaviourTests(unittest.TestCase):
         # The fixture was captured with an event probability, so participants appear.
         self.assertEqual(self.state["design_has_participants"], "true")
 
+    def test_the_page_explains_its_own_numbers(self):
+        # If the person who built it cannot interpret the charts, a judge cannot.
+        self.assertEqual(self.state["design_has_reading_guide"], "true")
+        self.assertEqual(self.state["guide_explains_the_correction"], "true")
+        # The guide reads this cohort's numbers, so it must name this cohort.
+        self.assertEqual(self.state["guide_quotes_this_cohort"], "true")
+
+    def test_every_chart_carries_a_readable_scale(self):
+        self.assertEqual(self.state["charts_label_a_scale"], "true")
+        self.assertEqual(self.state["forest_marks_the_null"], "true")
+        # Only the single stacked bar may stretch; the rest would distort text.
+        self.assertEqual(self.state["bars_are_not_stretched"], "true")
+
     def test_overview_and_ledger_cards_fill_in(self):
         self.assertEqual(self.state["design_has_lazy_cards"], "true")
         self.assertEqual(self.state["overview_lists_cohorts"], "true")

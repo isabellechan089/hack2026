@@ -62,6 +62,12 @@ try {
     OUT.push('design_has_funnel=' + has('#designpanel', /class="chart funnel"/));
     OUT.push('design_funnel_has_points=' + ((q('#designpanel').innerHTML.match(/<circle cx=/g) || []).length > 20));
     OUT.push('design_has_egger=' + has('#designpanel', /Egger/));
+    OUT.push('design_has_reading_guide=' + has('#designpanel', /How to read this page/));
+    OUT.push('guide_explains_the_correction=' + has('#designpanel', /hazard ratio below 1 favours/i));
+    OUT.push('guide_quotes_this_cohort=' + has('#designpanel', /non-small cell lung cancer trial that posted results/));
+    OUT.push('charts_label_a_scale=' + ((q('#designpanel').innerHTML.match(/<text /g) || []).length > 8));
+    OUT.push('forest_marks_the_null=' + has('#designpanel', /no difference at HR 1\.0/));
+    OUT.push('bars_are_not_stretched=' + ((q('#designpanel').innerHTML.match(/preserveAspectRatio="none"/g) || []).length === 1));
     OUT.push('design_names_provenance=' + has('#designpanel', /registrations from ClinicalTrials\\.gov/));
     OUT.push('design_has_participants=' + has('#designpanel', /<th>Participants<\\/th>/));
     OUT.push('design_has_lazy_cards=' + (has('#designpanel', /id="overviewcard"/) && has('#designpanel', /id="ledgercard"/)));
