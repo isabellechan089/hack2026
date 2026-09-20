@@ -66,7 +66,29 @@ python3 -m venv venv
 venv/bin/python -m pip install -r requirements.txt
 ```
 
-### Hero feature — bias-aware trial design
+### The web app
+
+```sh
+venv/bin/python main.py       # then open http://127.0.0.1:8000
+```
+
+Five views over one evidence graph, grouped the way the product is:
+
+**Clinical design** — *Bias-aware design* runs the whole publication-bias
+pipeline in the browser: the A/B/C composition of the cohort, linkage rates by
+result direction and significance, the two pooled priors as a forest plot, the
+power your design actually delivers, the sensitivity sweep, and the back-test.
+Saved cohorts answer in well under a second; a condition with no saved cohort
+fails immediately and names the ones that are ready rather than hanging for
+minutes. *Trial ↔ paper* takes a registry identifier and shows which publication
+actually reports the trial, with the field-by-field comparison.
+
+**Research integrity** — *Check my sources* screens a paper's whole reference
+list for retractions. *Retraction spread* is the citation blast radius, with
+re-rooting on any node. *Reviewer conflicts* returns exact coauthorship paths
+with the shared works behind each step.
+
+### The same analysis from the command line
 
 ```sh
 venv/bin/python cli.py design --condition "non-small cell lung cancer" \
@@ -77,13 +99,7 @@ First run builds the cohort from live APIs and takes about 4 minutes; every
 response is cached, so later runs are seconds. `--save` writes the cohort to
 `data/cohorts/`.
 
-### Research integrity — the web app
-
-```sh
-venv/bin/python main.py       # then open http://127.0.0.1:8000
-```
-
-Two modes over one graph.
+### What the integrity views show
 
 **Check my sources** — paste a paper you are citing, writing or reviewing. Every
 work it cites is screened for retraction notices. On the bundled example, a
@@ -114,7 +130,7 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-74 tests, all offline. The statistics are checked against closed-form values
+85 tests, all offline. The statistics are checked against closed-form values
 (Schoenfeld event counts, DerSimonian-Laird pooling) and against synthetic data
 with a known answer, so a regression in the maths fails a test rather than
 producing a plausible-looking number.
@@ -205,6 +221,7 @@ venv/bin/python main.py
 | `GET /api/design?condition=&endpoint=&hr=&alpha=&power=` | The full bias-aware design report |
 | `GET /api/cohort?condition=&endpoint=` | Cohort composition and linkage counts |
 | `POST /api/reviewer-conflict` | Conflict paths with evidence |
+| `GET /api/cohorts` | Which cohorts are saved and analyse instantly |
 | `GET /api/sources?doi=&deep=1` | Screen a paper's whole reference list for retractions |
 | `GET /api/graph?doi=&depth=1\|2&limit=` | Citation graph, retraction evidence, blast radius |
 | `GET /api/demo` · `/api/demo-sources` | Bundled snapshots, for offline demos |
@@ -239,6 +256,8 @@ backend/
   graph/              coauthors.py, reviewer_conflicts.py
   render.py           terminal report
 cli.py                design | cohort | reviewer | trial | paper | compare
+static/charts.js      inline-SVG chart primitives
+static/views.js       design, reviewer and trial-comparison views
 main.py               HTTP server + static UI
 graph.py              citation graph, exposure BFS, blast_radius
 retraction_check.py   screen a paper's own reference list
@@ -258,8 +277,9 @@ Stated plainly so the gaps are not mistaken for claims:
   the retrieval layer in front of it that is missing.
 - **No LLM adjudication.** The middle-confidence branch of the matching cascade
   falls through to "no link identified" rather than to a cheap model.
-- **No web UI for the hero feature.** Bias-aware design is CLI and API only; the
-  browser UI covers reference checking and the citation/retraction graph.
+- **The design view only runs saved cohorts.** Two are shipped (NSCLC, OS and
+  PFS). Any other condition needs a multi-minute rebuild, which the interface
+  refuses rather than hanging; `&rebuild=1` forces it.
 - **The reference screen leans on OpenAlex.** Only entries OpenAlex flags are
   confirmed against Crossref, so an unflagged reference was not individually
   checked. `deep=1` checks every one, at roughly a hundred times the API calls.

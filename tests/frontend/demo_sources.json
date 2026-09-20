@@ -1,0 +1,52 @@
+{
+ "paper": {
+  "id": "https://openalex.org/W3170090128",
+  "doi": "10.1038/s41571-021-00519-8",
+  "title": "Advancing therapy for osteosarcoma",
+  "year": 2021,
+  "date": "2021-06-15",
+  "citations": 929,
+  "journal": "Nature Reviews Clinical Oncology",
+  "is_retracted": false,
+  "authors": [
+   "Jonathan Gill",
+   "Richard G\u00f6rlick"
+  ]
+ },
+ "references_total": 182,
+ "references_screened": 179,
+ "retracted_references": 1,
+ "updated_references": 0,
+ "flagged": [
+  {
+   "id": "https://openalex.org/W3021757537",
+   "doi": "10.1177/1758835920922055",
+   "title": "RETRACTED: Myc is a prognostic biomarker and potential therapeutic target in osteosarcoma",
+   "year": 2020,
+   "date": "2020-01-01",
+   "citations": 56,
+   "openalex_retracted": true,
+   "retraction": {
+    "status": "retracted",
+    "notices": [
+     {
+      "doi": "10.1177/17588359231172420",
+      "title": "Retraction to 10.1177/1758835920922055",
+      "type": "retraction",
+      "date": "2023-04-22T00:00:00Z",
+      "source": "retraction-watch + publisher"
+     }
+    ],
+    "checked_at": "2026-09-20T03:57:46.867496+00:00",
+    "source": "Crossref"
+   }
+  }
+ ],
+ "deep": false,
+ "warnings": [
+  "3 reference(s) could not be resolved in OpenAlex and were not screened."
+ ],
+ "method": "References were screened using OpenAlex retraction flags; only flagged entries were confirmed against Crossref. A reference that OpenAlex does not flag was not individually checked, so \"none found\" means none found by this screen, not that the reference list is clean.",
+ "interpretation": "Citing a retracted paper is not itself an error. The citation may discuss the retraction, or concern a part of the work the notice does not affect. These are entries worth looking at, not verdicts.",
+ "mode": "snapshot"
+}

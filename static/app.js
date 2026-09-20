@@ -1,6 +1,7 @@
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data,selected,zoom=1,offset={x:0,y:0},view='graph',busy=false,mode='sources',sources;
-const colors={retracted:'#cc5f57',direct:'#ce9856',indirect:'#c8bc70',none:'#a3b4aa'};
+let data,selected,zoom=1,offset={x:0,y:0},view='graph',busy=false,mode='sources',sources,design,reviewer,trial;
+const colors={retracted:'#b3392f',direct:'#d9722c',indirect:'#4a7fb5',none:'#93a49a'};
+const VIZ={accent:'#d9722c',context:'#8d9d94',good:'#3f7d54',ink:'#213b38',muted:'#75827c',surface:'#ffffff',grid:'#e7ebe4'};
 const statuses={retracted:'Retraction notice found',updated:'Update notice found',no_notice_found:'No notice found',screened:'Screened, not flagged',unknown:'Status unknown'};
 const names={retracted:'Retracted paper',direct:'Direct citation connection',indirect:'Indirect citation connection',none:'No retraction path in sample'};
 function message(text,error=false){$('#notice').textContent=text;$('#notice').className=error?'error':''}
@@ -19,19 +20,43 @@ function doiLink(doi){return 'https://doi.org/'+encodeURI(String(doi).replace(/^
 function details(){const n=data.nodes.find(n=>n.id===selected);const r=n.retraction;$('#details').innerHTML=`<div class="eyebrow">${n.id===data.seed?'STARTING PAPER':'PAPER DETAILS'}</div><span class="badge ${r.status==='retracted'?'':'neutral'}">${statuses[r.status]}</span><h3>${esc(n.title)}</h3><p class="authors">${esc(n.authors.join(', '))}</p><div class="metadata"><div><span>PUBLISHED</span><strong>${n.year||'Unknown'}</strong></div><div><span>CITATIONS · OPENALEX</span><strong>${n.citations.toLocaleString()}</strong></div><div style="grid-column:1/-1"><span>JOURNAL / SOURCE</span><strong>${esc(n.journal)}</strong></div></div><section class="detailsection"><h4>UPDATE EVIDENCE</h4>${r.notices.length?r.notices.map(v=>`<div class="evidencebox"><a href="${esc(doiLink(v.doi))}" target="_blank" rel="noreferrer">${esc(v.title)} ↗</a><p>${esc(v.type)} · ${v.date?esc(v.date.slice(0,10)):'Date unavailable'} · ${esc(v.source)}</p></div>`).join(''):`<p>${esc(r.reason||'No update notice returned by Crossref. This is not a guarantee of reliability.')}</p>`}${n.openalex_retracted&&r.status!=='retracted'?'<p>OpenAlex separately flags this work as retracted; Crossref did not confirm it in this lookup.</p>':''}<p>Crossref lookup · ${new Date(r.checked_at).toLocaleDateString()}</p></section><section class="detailsection"><h4>EVIDENCE TRAIL</h4><p>${n.exposure==='retracted'?'This paper has a linked retraction notice.':n.exposure==='none'?'No path to a confirmed retraction was found in this sampled graph.':names[n.exposure]+'. One shortest citation path is shown below.'}</p>${n.evidence_path.map((id,i)=>{const p=data.nodes.find(x=>x.id===id);return `${i?'<div class="patharrow">↓ cites</div>':''}<button class="pathitem" data-path="${esc(id)}"><b>${i+1}</b><span>${esc(p.title)}</span></button>`}).join('')}</section>${n.id!==data.seed&&n.doi?`<button class="external primaryish" id="recenter">◎ Make this the starting paper</button>`:''}${n.doi?`<button class="external" id="checkrefs">⌕ Check this paper's own references</button>`:''}${n.doi?`<a class="external" href="${esc(doiLink(n.doi))}" target="_blank" rel="noreferrer">Open publication ↗</a>`:''}<a class="external" href="${esc(n.id)}" target="_blank" rel="noreferrer">View OpenAlex record ↗</a>`;document.querySelectorAll('[data-path]').forEach(el=>el.onclick=()=>select(el.dataset.path));
 const recenter=$('#recenter');if(recenter)recenter.onclick=()=>{$('#doi').value=n.doi;$('#depth').value='2';load()};
 const refs=$('#checkrefs');if(refs)refs.onclick=()=>{$('#doi').value=n.doi;setMode('sources');checkSources()}}
-function setMode(next){mode=next;const tracing=next==='trace';
-$('#modetrace').classList.toggle('active',tracing);$('#modesources').classList.toggle('active',!tracing);
-$('#depth').hidden=!tracing;$('#breadth').hidden=!tracing;
-$('#workspace').hidden=!tracing;$('#sourcepanel').hidden=tracing;
-$('#searchlabel').textContent=tracing?'START WITH A PAPER':'PASTE A PAPER YOU ARE CITING, WRITING, OR REVIEWING';
-$('#explore').innerHTML=(tracing?'Trace evidence':'Check references')+' <span>↗</span>';
-$('#searchsources').textContent=tracing?'OpenAlex citation metadata + Crossref update notices':'Screens every work this paper cites against OpenAlex and Crossref retraction notices';
-message('');
-// A mode switch loads that mode's data once; the saved snapshot is used so
-// the first view never depends on a live lookup.
-if(tracing&&!data)load(true);if(!tracing&&!sources)checkSources(true)}
-$('#modetrace').onclick=()=>setMode('trace');$('#modesources').onclick=()=>setMode('sources');
-$('#search').onsubmit=e=>{e.preventDefault();mode==='trace'?load():checkSources()};$('#demo').onclick=()=>setMode('sources');$('#filter').onchange=draw;$('#find').oninput=draw;
+const MODES={
+ sources:{panel:'sourcepanel',line:'lineDoi',label:'PASTE A PAPER YOU ARE CITING, WRITING, OR REVIEWING',
+   hint:'Screens every work this paper cites against OpenAlex and Crossref retraction notices',
+   cta:'Check references',run:()=>checkSources(),has:()=>!!sources,seed:()=>checkSources(true)},
+ trace:{panel:'workspace',line:'lineDoi',label:'START WITH A PAPER',
+   hint:'OpenAlex citation metadata + Crossref update notices',
+   cta:'Trace evidence',run:()=>load(),has:()=>!!data,seed:()=>load(true)},
+ design:{panel:'designpanel',line:'lineDesign',label:'DESIGN A TRIAL AGAINST THE REGISTRY, NOT JUST THE LITERATURE',
+   hint:'Registered trials with posted results, matched to the published record',
+   has:()=>!!design,seed:()=>{listCohorts();runDesign()}},
+ reviewer:{panel:'reviewerpanel',line:'lineReviewer',label:'CHECK A CANDIDATE REVIEWER AGAINST THE MANUSCRIPT AUTHORS',
+   hint:'Coauthorship paths from the OpenAlex author graph, with the shared works behind each step',
+   has:()=>!!reviewer,seed:()=>runReviewer()},
+ trial:{panel:'trialpanel',line:'lineTrial',label:'COMPARE WHAT WAS REGISTERED WITH WHAT WAS PUBLISHED',
+   hint:'ClinicalTrials.gov registration matched to its publications through PubMed',
+   cta:'Compare',has:()=>!!trial,seed:()=>runTrial()},
+};
+const PANELS=['sourcepanel','workspace','designpanel','reviewerpanel','trialpanel'];
+const LINES=['lineDoi','lineDesign','lineReviewer','lineTrial'];
+
+function setMode(next){mode=next;const m=MODES[next];
+ for(const k in MODES)$('#mode'+k).classList.toggle('active',k===next);
+ PANELS.forEach(id=>$('#'+id).hidden=(id!==m.panel));
+ LINES.forEach(id=>$('#'+id).hidden=(id!==m.line));
+ $('#depth').hidden=next!=='trace';$('#breadth').hidden=next!=='trace';
+ $('#searchlabel').textContent=m.label;$('#searchsources').textContent=m.hint;
+ if(m.cta&&next!=='trial')$('#explore').innerHTML=m.cta+' <span>↗</span>';
+ $('#demo').hidden=!(next==='sources'||next==='trace');
+ message('');
+ // Each mode loads its own data once, from a saved snapshot where one exists,
+ // so switching tabs never waits on a live lookup.
+ if(!m.has())m.seed()}
+Object.keys(MODES).forEach(k=>$('#mode'+k).onclick=()=>setMode(k));
+$('#search').onsubmit=e=>{e.preventDefault();const r=MODES[mode].run;r?r():MODES[mode].seed()};
+$('#rundesign').onclick=e=>{e.preventDefault();runDesign()};
+$('#runreviewer').onclick=e=>{e.preventDefault();runReviewer()};
+$('#runtrial').onclick=e=>{e.preventDefault();runTrial()};$('#demo').onclick=()=>setMode('sources');$('#filter').onchange=draw;$('#find').oninput=draw;
 async function checkSources(demo=false){if(busy)return;busy=true;$('#explore').disabled=true;$('#demo').disabled=true;
 message(demo?'Loading the saved reference check…':'Reading the reference list and checking each work for retraction notices…');
 try{const r=await fetch(demo?'/api/demo-sources':'/api/sources?'+new URLSearchParams({doi:$('#doi').value}));const result=await r.json();

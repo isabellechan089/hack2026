@@ -237,3 +237,25 @@ def load_or_build(
         condition, endpoint_class=endpoint_class, phases=phases,
         max_studies=max_studies, progress=progress,
     )
+
+
+def available_cohorts() -> List[Dict[str, str]]:
+    """Cohorts already saved to disk, which can be analysed instantly."""
+    if not os.path.isdir(COHORT_DIR):
+        return []
+    found = []
+    for name in sorted(os.listdir(COHORT_DIR)):
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(COHORT_DIR, name), "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        found.append({
+            "condition": payload.get("condition", ""),
+            "endpoint_class": payload.get("endpoint_class", ""),
+            "trials": len(payload.get("trials", [])),
+            "built_at": payload.get("built_at"),
+        })
+    return found

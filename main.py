@@ -1,5 +1,6 @@
 """Run: python main.py. Open http://127.0.0.1:8000."""
 import json
+import os
 import argparse
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -9,7 +10,7 @@ from api_client import normalize_doi
 from retraction_check import check_sources
 from backend.report import comparison_report, paper_report, trial_report
 from backend.publication_bias.analysis import analyze
-from backend.publication_bias.cohort import build_cohort
+from backend.publication_bias.cohort import available_cohorts, cohort_path, describe, load_or_build
 from backend.graph.reviewer_conflicts import find_conflicts, resolve_author
 from backend.sources.clinical_trials import looks_like_nct_id
 from backend.sources.http import SourceError
@@ -56,6 +57,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply({'error': str(error)}, 400)
             except Exception:
                 return self.reply({'error': 'The metadata provider could not complete this lookup. Check your connection or OPENALEX_API_KEY, or use the saved demo.'}, 502)
+        if parsed.path == '/api/cohorts':
+            return self.reply({'cohorts': available_cohorts()})
         if parsed.path in ('/api/design', '/api/cohort'):
             query = parse_qs(parsed.query)
             try:
@@ -65,14 +68,26 @@ class Handler(SimpleHTTPRequestHandler):
                 endpoint = query.get('endpoint', ['os'])[0]
                 if endpoint not in ('os', 'pfs'):
                     raise ValueError('endpoint must be os or pfs.')
-                cohort = build_cohort(
+                # Building a cohort from the live registry takes minutes, which
+                # would hang the request and the demo. Unless a rebuild is asked
+                # for explicitly, refuse fast and say which cohorts are ready.
+                rebuild = query.get('rebuild', [''])[0] == '1'
+                if not rebuild and not os.path.exists(cohort_path(condition, endpoint)):
+                    ready = ', '.join(
+                        '{} ({})'.format(c['condition'], c['endpoint_class'])
+                        for c in available_cohorts()) or 'none'
+                    raise ValueError(
+                        'No saved cohort for "{}" ({}). Ready to analyse now: {}. '
+                        'Building a new cohort takes several minutes; add &rebuild=1 '
+                        'to do it anyway.'.format(condition, endpoint, ready))
+                cohort = load_or_build(
                     condition,
                     endpoint_class=endpoint,
                     phases=tuple(query.get('phases', ['2,3'])[0].split(',')),
                     max_studies=min(400, int(query.get('max_studies', ['300'])[0])),
+                    rebuild=rebuild,
                 )
                 if parsed.path == '/api/cohort':
-                    from backend.publication_bias.cohort import describe
                     return self.reply(describe(cohort))
                 return self.reply(analyze(
                     cohort,

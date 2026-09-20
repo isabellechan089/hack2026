@@ -60,16 +60,17 @@ Mention the sampling honestly: “showing 20 of 52” is on screen, not buried.
 
 ## 1:40–2:00 — The bigger product
 
-“The same registry-and-literature graph powers our main feature: measuring
-publication bias and correcting the effect sizes people use to design trials.”
+Click **Bias-aware design** in the Clinical design group. It answers instantly
+from the saved cohort.
 
-If there is time, drop to a terminal:
+“Same graph, the other direction. 400 completed lung-cancer trials. Trials that
+worked are published 92% of the time; trials that did not, 62%. Correct for
+that and the pooled hazard ratio moves from 0.76 to 0.80 — and a trial you
+sized for 80% power actually delivers 32%.”
 
-```sh
-venv/bin/python cli.py design --condition "non-small cell lung cancer" --endpoint pfs --hr 0.65
-```
-
-Runs in about a second from the saved cohort.
+Scroll to the back-test: “and this is the part that matters — out of sample, the
+literature-only model is systematically optimistic, the registry-aware one is
+close to unbiased.”
 
 ## If asked about AI
 

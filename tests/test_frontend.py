@@ -76,6 +76,35 @@ class FrontendBehaviourTests(unittest.TestCase):
     def test_switching_back_restores_the_reference_check(self):
         self.assertEqual(self.state["back_to_sources"], "true")
 
+    def test_bias_aware_design_view_renders_every_section(self):
+        self.assertEqual(self.state["design_mode"], "true")
+        self.assertEqual(self.state["design_panel_visible"], "true")
+        self.assertEqual(self.state["design_line_visible"], "true")
+        for key in ("design_has_stackbar", "design_has_linkage_bars", "design_has_forest",
+                    "design_has_meters", "design_has_backtest", "design_has_sensitivity"):
+            self.assertEqual(self.state[key], "true", key)
+
+    def test_reviewer_view_shows_paths_and_their_evidence(self):
+        self.assertEqual(self.state["reviewer_mode"], "true")
+        self.assertEqual(self.state["reviewer_panel_visible"], "true")
+        self.assertEqual(self.state["reviewer_has_verdict"], "true")
+        self.assertEqual(self.state["reviewer_has_path"], "true")
+        # A path without its shared works would be an opaque score.
+        self.assertEqual(self.state["reviewer_has_evidence"], "true")
+
+    def test_trial_view_lists_publications_and_compares_fields(self):
+        self.assertEqual(self.state["trial_mode"], "true")
+        self.assertEqual(self.state["trial_panel_visible"], "true")
+        self.assertEqual(self.state["trial_has_publist"], "true")
+        self.assertEqual(self.state["trial_has_table"], "true")
+        self.assertEqual(self.state["trial_has_status_tags"], "true")
+
+    def test_no_view_renders_undefined_or_nan(self):
+        # A misspelled payload key surfaces as "undefined" in the markup rather
+        # than as an exception, so it has to be asserted against directly.
+        for key in ("design_no_undefined", "reviewer_no_undefined", "trial_no_undefined"):
+            self.assertEqual(self.state[key], "true", key)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
