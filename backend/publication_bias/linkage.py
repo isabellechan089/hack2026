@@ -27,15 +27,31 @@ REGISTRY_REFERENCE = "nct_registry_reference"
 PUBMED_SECONDARY_ID = "nct_pubmed_si"
 FUZZY = "fuzzy"
 
-# Step 5 categories.
-CATEGORY_A = "published_with_result"       # publication identified + registry result
-CATEGORY_B = "registry_only_with_result"   # no publication identified + registry result
-CATEGORY_C = "no_publication_no_result"    # neither
+# Step 5 categories. A and B differ only in whether the result reached the
+# literature, which is what makes them a test of publication selection.
+CATEGORY_A = "published_with_result"       # publication identified + usable result
+CATEGORY_B = "registry_only_with_result"   # no publication identified + usable result
+CATEGORY_C = "no_usable_result"            # no usable effect estimate, either way
 
 CATEGORY_LABELS = {
-    CATEGORY_A: "Publication identified, registry result posted",
-    CATEGORY_B: "No publication identified, registry result posted",
-    CATEGORY_C: "No publication identified, no usable registry result",
+    CATEGORY_A: "Usable result, publication identified",
+    CATEGORY_B: "Usable result, no publication identified",
+    CATEGORY_C: "No usable effect estimate for this endpoint",
+}
+
+# C is not one thing, and saying "no publication" about it was wrong: most of
+# these trials do have publications. What they lack is an effect estimate this
+# analysis can pool. The reasons differ in what could be done about them.
+REASON_NO_ANALYSIS = "no_analysis_posted"        # results posted, but no analysis
+REASON_OTHER_MEASURE = "incomparable_measure"    # odds ratio, response rate, ...
+REASON_OTHER_ENDPOINT = "other_endpoint"         # a hazard ratio, different endpoint
+REASON_NO_VARIANCE = "no_confidence_interval"    # point estimate with no interval
+
+REASON_LABELS = {
+    REASON_NO_ANALYSIS: "Results posted without any statistical analysis",
+    REASON_OTHER_MEASURE: "Reported on a scale that cannot be pooled with hazard ratios",
+    REASON_OTHER_ENDPOINT: "Hazard ratio posted, but for a different endpoint",
+    REASON_NO_VARIANCE: "Hazard ratio posted without a confidence interval",
 }
 
 
@@ -102,11 +118,22 @@ class CohortTrial:
 
     def category(self, endpoint_class: str = "os") -> str:
         has_result = self.best_effect(endpoint_class) is not None
-        if self.has_publication and has_result:
-            return CATEGORY_A
-        if has_result:
-            return CATEGORY_B
-        return CATEGORY_C
+        if not has_result:
+            return CATEGORY_C
+        return CATEGORY_A if self.has_publication else CATEGORY_B
+
+    def missing_reason(self, endpoint_class: str = "os") -> Optional[str]:
+        """Why this trial has no poolable estimate, when it has none."""
+        if self.best_effect(endpoint_class) is not None:
+            return None
+        if not self.effects:
+            return REASON_NO_ANALYSIS
+        if any(e.is_poolable for e in self.effects):
+            return REASON_OTHER_ENDPOINT
+        hazard = [e for e in self.effects if e.measure == "hazard_ratio"]
+        if hazard and all((e.standard_error or 0) <= 0 for e in hazard):
+            return REASON_NO_VARIANCE
+        return REASON_OTHER_MEASURE
 
     def to_dict(self, endpoint_class: str = "os") -> Dict[str, Any]:
         effect = self.best_effect(endpoint_class)
@@ -121,10 +148,21 @@ class CohortTrial:
             "start_date": self.trial.start_date,
             "completion_date": self.trial.completion_date,
             "conditions": self.trial.conditions,
+            "official_title": self.trial.official_title,
+            "brief_summary": self.trial.brief_summary,
+            "interventions": self.trial.interventions,
+            "investigators": self.trial.investigators,
+            "primary_outcomes": [{"measure": o.measure, "time_frame": o.time_frame} for o in self.trial.primary_outcomes],
+            "secondary_outcomes": [{"measure": o.measure, "time_frame": o.time_frame} for o in self.trial.secondary_outcomes],
+            "linked_references": self.trial.linked_references,
             "category": self.category(endpoint_class),
+            "missing_reason": self.missing_reason(endpoint_class),
             "has_publication": self.has_publication,
             "links": [link.to_dict() for link in self.links],
             "effect": effect.to_dict() if effect else None,
+            # Every posted estimate, so a saved cohort can still explain why a
+            # trial has no poolable result rather than only that it has none.
+            "effects": [e.to_dict() for e in self.effects],
             "effect_count": len(self.effects),
             "poolable_effect_count": len(self.poolable_effects),
             "registry_url": "https://clinicaltrials.gov/study/{}".format(self.trial.nct_id),

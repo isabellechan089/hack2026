@@ -12,9 +12,22 @@ from .power import design_comparison
 from .priors import compare_priors
 
 
+def _sources(cohort: Cohort) -> Dict[str, int]:
+    """Where the pooled estimates came from, so the two are never conflated."""
+    counts = {"registry_posted": 0, "publication_extracted": 0}
+    for item in cohort.trials:
+        effect = item.best_effect(cohort.endpoint_class)
+        if effect is None:
+            continue
+        counts["publication_extracted" if effect.source == "publication" else "registry_posted"] += 1
+    return counts
+
+
 def analyze(
     cohort: Cohort,
     assumed_hr: float = 0.65,
+    recover: bool = False,
+    max_recover_papers: int = 80,
     alpha: float = 0.05,
     target_power: float = 0.80,
     event_probability: Optional[float] = None,
@@ -22,6 +35,10 @@ def analyze(
     assumed_hazard_ratios: Sequence[float] = (0.80, 0.85, 0.90, 0.95, 1.00, 1.05, 1.10),
 ) -> Dict[str, Any]:
     """The full analysis for one cohort and one proposed design."""
+    recovery = None
+    if recover:
+        from . import fulltext
+        recovery = fulltext.recover(cohort, max_papers=max_recover_papers)
     priors = compare_priors(cohort)
     literature_hr = priors["literature_only"].get("hazard_ratio")
     registry_hr = priors["registry_aware"].get("hazard_ratio")
@@ -49,6 +66,8 @@ def analyze(
         "backtest": backtest.run(cohort, level=target_power)
         if run_backtest
         else {"ran": False, "note": "Back-test skipped."},
+        "recovery": recovery,
+        "evidence_sources": _sources(cohort),
         "guardrails": [
             "A trial with no identified publication is not necessarily unpublished; "
             "matching has false negatives.",

@@ -74,6 +74,30 @@ try {
     OUT.push('trial_has_status_tags=' + has('#trialpanel', /class="tag /));
     OUT.push('trial_no_undefined=' + (has('#trialpanel', /undefined|NaN/) === false));
 
+    // recovery / token panel inside the design view (fixture captured with recover=1)
+    OUT.push('design_has_recovery_panel=' + has('#designpanel', /Reading the papers the registry left out/));
+    OUT.push('design_recovery_has_meter=' + has('#designpanel', /Model input avoided/));
+    OUT.push('design_recovery_lists_trials=' + has('#designpanel', /europepmc\\.org\\/article\\/PMC/));
+    OUT.push('design_names_sources=' + has('#designpanel', /extracted from open full text/));
+
+    // cascade card inside the trial view, then render captured candidates into it
+    q('#modetrial').onclick();
+    OUT.push('trial_has_cascade_card=' + has('#trialpanel', /id="cascadecard"/));
+    candidates = FIX.candidates; renderCandidates();
+    OUT.push('cascade_renders_decisions=' + has('#cascadecard', /Rejected · model-assisted|Accepted · model-assisted|Needs a human/));
+    OUT.push('cascade_shows_model_reason=' + has('#cascadecard', /<i>gpt/));
+    OUT.push('cascade_never_shows_plain_accepted=' + (has('#cascadecard', /Accepted by score/) === false));
+    OUT.push('cascade_no_undefined=' + (has('#cascadecard', /undefined|NaN/) === false));
+
+    q('#modesearch').onclick();
+    OUT.push('search_mode=' + (mode === 'search'));
+    OUT.push('search_panel_visible=' + (q('#searchpanel').hidden === false));
+    OUT.push('search_line_visible=' + (q('#lineSearch').hidden === false));
+    searchResult = FIX.search; renderSearch();
+    OUT.push('search_has_hits=' + ((q('#searchpanel').innerHTML.match(/data-open=/g) || []).length > 3));
+    OUT.push('search_shows_index_size=' + has('#searchpanel', /papers indexed/));
+    OUT.push('search_no_undefined=' + (has('#searchpanel', /undefined|NaN/) === false));
+
     q('#modesources').onclick();
     OUT.push('back_to_sources=' + (q('#sourcepanel').hidden === false && q('#designpanel').hidden === true
                                    && q('#workspace').hidden === true && q('#trialpanel').hidden === true));
@@ -85,6 +109,8 @@ try {
     design: JSON.parse(read(F + 'design.json')),
     reviewer: JSON.parse(read(F + 'reviewer.json')),
     trial: JSON.parse(read(F + 'trial.json')),
+    candidates: JSON.parse(read(F + 'candidates.json')),
+    search: JSON.parse(read(F + 'search.json')),
   }, []);
 } catch (e) {
   out.push('THREW=' + (e && e.message));

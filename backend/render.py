@@ -53,8 +53,15 @@ def render(report: Dict[str, Any]) -> str:
         GREEN, RESET, categories["A_published_with_result"]))
     out.append("  {}B{} registry result, no publication found {:>4}   {}the observable gap{}".format(
         YELLOW, RESET, categories["B_registry_only_with_result"], DIM, RESET))
-    out.append("  {}C{} no publication, no usable result     {:>4}   {}sensitivity analysis only{}".format(
-        RED, RESET, categories["C_no_publication_no_result"], DIM, RESET))
+    out.append("  {}C{} no usable effect estimate            {:>4}   {}sensitivity analysis only{}".format(
+        RED, RESET, categories["C_no_usable_result"], DIM, RESET))
+    breakdown = cohort.get("no_result_breakdown") or {}
+    for reason, count in (breakdown.get("reasons") or {}).items():
+        out.append("      {}{:<48} {:>4}{}".format(DIM, reason[:48], count, RESET))
+    if breakdown:
+        out.append("      {}{} of these have a publication; {} do not{}".format(
+            DIM, breakdown.get("with_publication_identified", 0),
+            breakdown.get("without_publication_identified", 0), RESET))
 
     linkage = report["linkage"]
     if linkage.get("n"):

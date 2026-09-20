@@ -87,6 +87,10 @@ list for retractions. *Retraction spread* is the citation blast radius, with
 re-rooting on any node. *Reviewer conflicts* returns exact coauthorship paths
 with the shared works behind each step.
 
+**Evidence index** — free-text search over every indexed trial and paper
+(Elasticsearch), the same retrieval that proposes candidates when a trial has
+no identifier link.
+
 ### The same analysis from the command line
 
 ```sh
@@ -129,7 +133,7 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-89 tests, all offline. The statistics are checked against closed-form values
+112 tests, all offline. The statistics are checked against closed-form values
 (Schoenfeld event counts, DerSimonian-Laird pooling) and against synthetic data
 with a known answer, so a regression in the maths fails a test rather than
 producing a plausible-looking number.
@@ -155,6 +159,31 @@ ClinicalTrials.gov ──► cohort ──► posted results (hazard ratios)
               power / sample size  ──►  leave-one-out back-test
 ```
 
+### Reading the papers the registry left out
+
+Most trials without a usable estimate *do* have a publication — 149 of 314 in
+the lung-cancer cohort. The registry posted an outcome table with no analysis;
+the paper reports the hazard ratio. With **Read open full text** ticked, the
+design view fetches open-access full text from Europe PMC for those trials,
+reduces each article to the sentences that could carry a hazard ratio, and has
+a small model pair each ratio with its endpoint and interval.
+
+Every extracted value is validated against the sentence it came from — the
+ratio must be positive, the interval must bracket it, and the quoted evidence
+must appear in the text — or it is dropped, never guessed. Recovered estimates
+are labelled `source: publication` and reported separately from registry
+postings, so the two are never conflated.
+
+Measured on the lung-cancer cohort: 93 trials had open full text, 41 parsed,
+**5 trials recovered** for PFS (A: 65 → 70) and 6 for OS. Model input was
+**12,996 tokens against 354,412** had whole papers been sent — a 96% reduction,
+with every call answered by the smallest tier and none escalated. On one paper
+measured both ways, 478 prompt tokens versus 3,735 (87%).
+
+Note what this does and does not fix: a recovered trial has a publication by
+construction, so it joins the *published* arm. The registry-only arm cannot be
+rescued from the literature, because there is nothing to read.
+
 ### Linking trials to publications
 
 Three channels, most authoritative first, because a false "unpublished" verdict
@@ -167,9 +196,16 @@ time, so a 400-trial cohort links in about ten seconds rather than four minutes.
    catches publications the registry never listed. Attribution uses that
    databank field alone: an identifier appearing only in a paper's abstract
    prose — a trial it compares against, say — is recorded but does not link.
-3. `fuzzy` — deterministic metadata scoring (investigator overlap, intervention,
-   condition, enrollment, dates, sponsor), used only when neither identifier
-   channel returns anything.
+3. `fuzzy` — a cascade, used only when neither identifier channel returns
+   anything: Elasticsearch retrieves candidate papers from the trial's
+   interventions, conditions and investigators; the deterministic scorer
+   (investigator overlap, intervention, condition, enrollment, dates, sponsor)
+   rejects clear non-matches on its own; and a small model reads the paper's
+   abstract against the registration for everything left. **A metadata score
+   never accepts on its own.** The same investigator running a sibling trial of
+   the same drug scores 0.90 and is still a different trial — the model caught
+   exactly that case and said why. Every model-assisted decision carries its
+   reason and is flagged as such.
 
 A trial with no link from any channel is reported as **"no publication
 identified"**, never as "unpublished".
@@ -190,9 +226,12 @@ is reported at each point.
 
 ## Design rules
 
-- **Databases, graphs and statistics for facts; LLMs for language.** No language
-  model is used anywhere in this codebase yet. Every number is a query, a graph
-  traversal, or a statistical model.
+- **Databases, graphs and statistics for facts; LLMs for language.** A small
+  model is used for exactly two language tasks — reading a hazard ratio out of
+  a sentence, and judging whether an abstract describes a given registration —
+  and never sees a whole paper. Its output is validated against the text it
+  read, labelled as model-assisted, and never becomes primary evidence. Every
+  number in the statistics is a query, a graph traversal, or a model fit.
 - **Measured, not assumed.** The registry-aware prior may move toward the null,
   away from it, or not at all. The tool reports which, and says when the two
   priors are identical.
@@ -225,6 +264,10 @@ venv/bin/python main.py
 | `GET /api/cohort?condition=&endpoint=` | Cohort composition and linkage counts |
 | `POST /api/reviewer-conflict` | Conflict paths with evidence |
 | `GET /api/cohorts` | Which cohorts are saved and analyse instantly |
+| `GET /api/design?…&recover=1` | The same report, with hazard ratios recovered from open full text |
+| `GET /api/candidates?nct=` | The fuzzy cascade for one trial: retrieved, scored, adjudicated |
+| `GET /api/search?q=` | Free-text search over the Elasticsearch index |
+| `GET /api/llm-ledger` | Every model call made, with token counts by purpose |
 | `GET /api/sources?doi=&deep=1` | Screen a paper's whole reference list for retractions |
 | `GET /api/graph?doi=&depth=1\|2&limit=` | Citation graph, retraction evidence, blast radius |
 | `GET /api/demo` · `/api/demo-sources` | Bundled snapshots, for offline demos |
@@ -245,6 +288,7 @@ backend/
                       clinical_trials.py  registry cohort, posted results
                       pubmed.py           NCT<->publication join
                       openalex.py         scholarly graph
+                      europepmc.py        open full text, reduced to HR sentences
   models/             core.py, effects.py, matching.py, comparison.py
   matching/           trial_paper_matcher.py, publication_role.py
   compare/            trial_publication.py    registered-vs-published table
@@ -257,6 +301,10 @@ backend/
                       backtest.py       section 4  leave-one-out validation
                       analysis.py       orchestrator
   graph/              coauthors.py, reviewer_conflicts.py
+  search/elastic.py   index + retrieval: candidate generation, cohort search
+  llm/                client.py (cache, ledger, budget cap), extraction.py, matching.py
+  publication_bias/fulltext.py   recover estimates from Europe PMC full text
+  config.py           loads .env; accepts a Cloud ID or an endpoint URL
   render.py           terminal report
 cli.py                design | cohort | reviewer | trial | paper | compare
 static/charts.js      inline-SVG chart primitives
@@ -275,11 +323,13 @@ tests/                63 offline tests
 
 Stated plainly so the gaps are not mistaken for claims:
 
-- **No Elasticsearch.** Candidate retrieval for fuzzy matching currently uses
-  the registry and PubMed directly. The fuzzy scorer exists and is tested; it is
-  the retrieval layer in front of it that is missing.
-- **No LLM adjudication.** The middle-confidence branch of the matching cascade
-  falls through to "no link identified" rather than to a cheap model.
+- **The index holds the analysed cohorts, not the literature.** Elasticsearch
+  is populated from the cohorts you build (400 trials, ~600 papers for lung
+  cancer). A trial's true paper is only findable by the cascade if it is in the
+  index, so candidate search currently mainly *prevents* false links.
+- **Full-text recovery is bounded by open access.** 43% of the eligible papers
+  had open full text and just under half of those parsed; recovery reached 5 of
+  149 trials. The parser is the weak point, not the model.
 - **Cohort size is capped at 400 trials** per analysis, and a very broad disease
   term will be truncated rather than sampled.
 - **The reference screen leans on OpenAlex.** Only entries OpenAlex flags are

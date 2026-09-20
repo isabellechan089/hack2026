@@ -196,13 +196,26 @@ def extract_effect_estimates(payload: Dict[str, Any]) -> List["EffectEstimate"]:
         title = measure.get("title")
         for analysis in measure.get("analyses") or []:
             param_type = (analysis.get("paramType") or "").strip()
-            is_hr = "hazard ratio" in param_type.lower()
+            label = param_type.lower()
+            # Sponsors label the same quantity several ways. A Cox model's
+            # parameter is a hazard ratio, and stratified or unstratified ones
+            # still are. "Min Hazard" in a biomarker threshold is not, and a
+            # ratio reported on the log scale is a different number entirely,
+            # so it is excluded rather than silently misread as a ratio.
+            is_log_scale = "log" in label
+            is_hr = not is_log_scale and (
+                "hazard ratio" in label or "cox proportional hazard" in label
+            )
             value = _to_float(analysis.get("paramValue"))
             lower = _to_float(analysis.get("ciLowerLimit"))
             upper = _to_float(analysis.get("ciUpperLimit"))
 
             reason = None
-            if not is_hr:
+            if is_log_scale and "hazard" in label:
+                reason = (
+                    "Reported as '{}' on the log scale, not as a ratio.".format(param_type)
+                )
+            elif not is_hr:
                 reason = "Effect measure is '{}', not a hazard ratio.".format(
                     param_type or "unlabeled"
                 )

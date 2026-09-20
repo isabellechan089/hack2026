@@ -7,7 +7,7 @@ is labeled `inferred` and carries every signal that produced it.
 """
 
 import re
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 from ..models.core import Paper, Trial
 from ..models.matching import MatchSignal, TrialPaperMatch
@@ -303,3 +303,74 @@ def find_trials_for_paper(paper: Paper, fallback_search: bool = True) -> List[Tr
 
     matches.sort(key=lambda match: match.score, reverse=True)
     return matches
+
+
+# --- The fuzzy cascade ---------------------------------------------------
+# candidate retrieval -> deterministic scoring -> cheap adjudication -> flag.
+# Thresholds are on the deterministic score; the model is only consulted in
+# the band between them, and can promote a pair to "accepted" only with a
+# clear verdict. Everything it touches is marked llm_used.
+
+ACCEPT_AT = 0.75
+REJECT_BELOW = 0.45
+
+
+def find_publications_fuzzy(
+    trial: Trial, size: int = 12, adjudicate: bool = True, exclude_pmids: Sequence[str] = ()
+) -> Dict[str, Any]:
+    """Candidates for a trial with no identifier link, with each one's fate."""
+    from ..search import elastic
+    from ..sources import pubmed as _pubmed
+
+    try:
+        hits = elastic.candidates_for_trial(trial, size=size, exclude_pmids=exclude_pmids)
+    except Exception as exc:  # search down: say so rather than return "none"
+        return {"retrieval": "unavailable", "error": str(exc)[:160], "candidates": []}
+
+    pmids = [h["pmid"] for h in hits if h.get("pmid")]
+    papers = {p.pmid: p for p in _pubmed.get_papers_by_pmid(pmids) if p.pmid}
+    out = []
+    llm_tokens = 0
+    for hit in hits:
+        paper = papers.get(hit.get("pmid") or "")
+        if paper is None:
+            continue
+        match = score_match(trial, paper)
+        entry = {
+            "pmid": paper.pmid, "doi": paper.doi, "title": paper.title,
+            "year": paper.publication_year, "retrieval_score": hit.get("_score"),
+            "match": match.to_dict(), "llm": None,
+        }
+        # A metadata score can reject on its own, but never accept: the same
+        # investigator running a sibling trial of the same drug scores highly and
+        # is still a different trial. Acceptance needs a reading of the paper.
+        if match.score < REJECT_BELOW:
+            entry["decision"] = "rejected"
+        else:
+            entry["decision"] = "strong_candidate" if match.score >= ACCEPT_AT else "review"
+            if adjudicate:
+                try:
+                    from ..llm import matching as llm_matching
+                    verdict = llm_matching.adjudicate(trial, paper)
+                    entry["llm"] = verdict
+                    llm_tokens += verdict["tokens"]
+                    if verdict["verdict"] == "reports_this_trial" and verdict["confidence"] >= 0.7:
+                        entry["decision"] = "accepted_by_adjudication"
+                    elif verdict["verdict"] == "different_trial" and verdict["confidence"] >= 0.7:
+                        entry["decision"] = "rejected_by_adjudication"
+                except Exception as exc:
+                    entry["llm"] = {"error": str(exc)[:120]}
+        out.append(entry)
+    order = {"accepted_by_adjudication": 0, "strong_candidate": 1, "review": 2, "rejected_by_adjudication": 3, "rejected": 4}
+    out.sort(key=lambda e: (order.get(e["decision"], 9), -e["match"]["score"]))
+    return {
+        "retrieval": "elasticsearch", "candidates": out, "llm_tokens": llm_tokens,
+        "thresholds": {"accept_at": ACCEPT_AT, "reject_below": REJECT_BELOW},
+        "note": (
+            "Candidates come from keyword retrieval over indexed works. The deterministic "
+            "score rejects clear non-matches on its own but never accepts on its own: "
+            "without a declared identifier, acceptance requires a small model to read the "
+            "paper against the registration. Every such match carries the model's reason "
+            "and is flagged as model-assisted, never presented as an extracted fact."
+        ),
+    }

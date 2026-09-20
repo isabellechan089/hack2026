@@ -99,10 +99,32 @@ class FrontendBehaviourTests(unittest.TestCase):
         self.assertEqual(self.state["trial_has_table"], "true")
         self.assertEqual(self.state["trial_has_status_tags"], "true")
 
+    def test_recovery_panel_shows_sources_and_cost(self):
+        self.assertEqual(self.state["design_has_recovery_panel"], "true")
+        self.assertEqual(self.state["design_recovery_has_meter"], "true")
+        self.assertEqual(self.state["design_recovery_lists_trials"], "true")
+        # Registry-posted and publication-extracted estimates are never conflated.
+        self.assertEqual(self.state["design_names_sources"], "true")
+
+    def test_cascade_renders_model_assisted_decisions_and_reasons(self):
+        self.assertEqual(self.state["trial_has_cascade_card"], "true")
+        self.assertEqual(self.state["cascade_renders_decisions"], "true")
+        self.assertEqual(self.state["cascade_shows_model_reason"], "true")
+        # A metadata score alone can never produce an "accepted" row.
+        self.assertEqual(self.state["cascade_never_shows_plain_accepted"], "true")
+
+    def test_search_view_renders_hits_over_the_index(self):
+        self.assertEqual(self.state["search_mode"], "true")
+        self.assertEqual(self.state["search_panel_visible"], "true")
+        self.assertEqual(self.state["search_line_visible"], "true")
+        self.assertEqual(self.state["search_has_hits"], "true")
+        self.assertEqual(self.state["search_shows_index_size"], "true")
+
     def test_no_view_renders_undefined_or_nan(self):
         # A misspelled payload key surfaces as "undefined" in the markup rather
         # than as an exception, so it has to be asserted against directly.
-        for key in ("design_no_undefined", "reviewer_no_undefined", "trial_no_undefined"):
+        for key in ("design_no_undefined", "reviewer_no_undefined", "trial_no_undefined",
+                    "cascade_no_undefined", "search_no_undefined"):
             self.assertEqual(self.state[key], "true", key)
 
 

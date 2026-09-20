@@ -121,15 +121,22 @@ def save_cohort(cohort: Cohort, path: Optional[str] = None) -> str:
 
 def describe(cohort: Cohort) -> Dict[str, Any]:
     """Counts a reader needs to judge whether the cohort supports the analysis."""
-    from .linkage import CATEGORY_A, CATEGORY_B, CATEGORY_C
+    from .linkage import CATEGORY_A, CATEGORY_B, CATEGORY_C, REASON_LABELS
 
     categories: Dict[str, int] = {}
     sponsors: Dict[str, int] = {}
+    reasons: Dict[str, int] = {}
+    no_result_with_publication = 0
     for item in cohort.trials:
         category = item.category(cohort.endpoint_class)
         categories[category] = categories.get(category, 0) + 1
         kind = sponsor_type(item.trial)
         sponsors[kind] = sponsors.get(kind, 0) + 1
+        reason = item.missing_reason(cohort.endpoint_class)
+        if reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+            if item.has_publication:
+                no_result_with_publication += 1
 
     linked = sum(1 for item in cohort.trials if item.has_publication)
     with_effect = len(cohort.with_effect())
@@ -146,7 +153,14 @@ def describe(cohort: Cohort) -> Dict[str, Any]:
         "categories": {
             "A_published_with_result": categories.get(CATEGORY_A, 0),
             "B_registry_only_with_result": categories.get(CATEGORY_B, 0),
-            "C_no_publication_no_result": categories.get(CATEGORY_C, 0),
+            "C_no_usable_result": categories.get(CATEGORY_C, 0),
+        },
+        # Most of C has a publication. Saying otherwise, as an earlier version
+        # of this output did, is simply false.
+        "no_result_breakdown": {
+            "reasons": {REASON_LABELS.get(k, k): v for k, v in sorted(reasons.items())},
+            "with_publication_identified": no_result_with_publication,
+            "without_publication_identified": categories.get(CATEGORY_C, 0) - no_result_with_publication,
         },
         "sponsor_types": sponsors,
         "excluded": len(cohort.excluded),
@@ -160,7 +174,7 @@ def load_cohort(path: str) -> Cohort:
     registry fields, the effect estimates and the publication links that the
     analysis needs, so every downstream number is reproducible offline.
     """
-    from ..models.core import Trial
+    from ..models.core import Outcome, Trial
     from ..models.effects import EffectEstimate
     from .linkage import PublicationLink
 
@@ -180,26 +194,37 @@ def load_cohort(path: str) -> Cohort:
             start_date=record.get("start_date"),
             completion_date=record.get("completion_date"),
             conditions=record.get("conditions") or [],
+            official_title=record.get("official_title"),
+            brief_summary=record.get("brief_summary"),
+            interventions=record.get("interventions") or [],
+            investigators=record.get("investigators") or [],
+            primary_outcomes=[Outcome(measure=o["measure"], time_frame=o.get("time_frame"), kind="primary")
+                              for o in record.get("primary_outcomes") or [] if o.get("measure")],
+            secondary_outcomes=[Outcome(measure=o["measure"], time_frame=o.get("time_frame"), kind="secondary")
+                                for o in record.get("secondary_outcomes") or [] if o.get("measure")],
+            linked_references=record.get("linked_references") or [],
         )
-        effect = record.get("effect")
-        effects = []
-        if effect:
-            effects.append(
-                EffectEstimate(
-                    nct_id=effect.get("nct_id", trial.nct_id),
-                    measure=effect.get("measure", ""),
-                    value=effect.get("value"),
-                    ci_lower=effect.get("ci_lower"),
-                    ci_upper=effect.get("ci_upper"),
-                    p_value=effect.get("p_value"),
-                    outcome_title=effect.get("outcome_title"),
-                    outcome_type=effect.get("outcome_type"),
-                    endpoint_class=effect.get("endpoint_class"),
-                    source=effect.get("source", "clinicaltrials.gov"),
-                    source_url=effect.get("source_url", ""),
-                    excluded_reason=effect.get("excluded_reason"),
-                )
+        # Newer snapshots carry every posted estimate; older ones only the best.
+        raw_effects = record.get("effects")
+        if raw_effects is None:
+            raw_effects = [record["effect"]] if record.get("effect") else []
+        effects = [
+            EffectEstimate(
+                nct_id=effect.get("nct_id", trial.nct_id),
+                measure=effect.get("measure", ""),
+                value=effect.get("value"),
+                ci_lower=effect.get("ci_lower"),
+                ci_upper=effect.get("ci_upper"),
+                p_value=effect.get("p_value"),
+                outcome_title=effect.get("outcome_title"),
+                outcome_type=effect.get("outcome_type"),
+                endpoint_class=effect.get("endpoint_class"),
+                source=effect.get("source", "clinicaltrials.gov"),
+                source_url=effect.get("source_url", ""),
+                excluded_reason=effect.get("excluded_reason"),
             )
+            for effect in raw_effects
+        ]
         links = [
             PublicationLink(
                 nct_id=link.get("nct_id", trial.nct_id),

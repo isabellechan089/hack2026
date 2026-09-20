@@ -1,0 +1,1 @@
+{"calls": 26, "by_purpose": {"smoke": {"calls": 1, "prompt_tokens": 318, "completion_tokens": 204}, "recover": {"calls": 13, "prompt_tokens": 8908, "completion_tokens": 4088}, "baseline_whole_paper": {"calls": 1, "prompt_tokens": 3735, "completion_tokens": 188}, "adjudicate": {"calls": 11, "prompt_tokens": 8517, "completion_tokens": 765}}, "total_tokens": 26723}

@@ -31,9 +31,12 @@ async function listCohorts() {
 async function runDesign() {
   if (!guard('rundesign', 'Building the registry cohort and matching it to the published record. A new disease area takes about ten seconds…')) return;
   try {
+    const recover = $('#recover').checked;
+    if (recover) message('Building the cohort, then reading open full text for trials with no posted estimate. This can take a minute…');
     design = await callJSON('/api/design?' + new URLSearchParams({
       condition: $('#condition').value, endpoint: $('#endpoint').value,
       hr: $('#hr').value, power: $('#power').value, alpha: $('#alpha').value,
+      recover: recover ? '1' : '0',
     }));
     renderDesign(); message(''); listCohorts();
   } catch (e) { message(e.message, true); }
@@ -61,8 +64,9 @@ function renderDesign() {
     ${stackbar([
       {label: 'Published, with a result', value: cat.A_published_with_result, color: VIZ.good},
       {label: 'Registry result, no publication found', value: cat.B_registry_only_with_result, color: VIZ.accent, note: 'the observable gap'},
-      {label: 'No publication, no usable result', value: cat.C_no_publication_no_result, color: VIZ.context, note: 'sensitivity analysis only'},
+      {label: 'No usable effect estimate', value: cat.C_no_usable_result, color: VIZ.context, note: 'sensitivity analysis only'},
     ], {title: 'trial categories'})}
+    ${c.no_result_breakdown ? `<p class="rownote" style="margin-top:12px">Of the ${CH.int(cat.C_no_usable_result)} without a usable estimate, ${CH.int(c.no_result_breakdown.with_publication_identified)} do have a publication. ${Object.entries(c.no_result_breakdown.reasons).map(([k, v]) => `${CH.esc(k)}: ${CH.int(v)}`).join(' · ')}.</p>` : ''}
   </section>
 
   <section class="vizcard"><h3>2 · Publication tracks the result</h3>
@@ -117,10 +121,86 @@ function renderDesign() {
   </section>
 </div>
 
+${recoveryPanel(d)}
+
 <details class="methods"><summary>How these numbers were produced</summary>
   ${d.guardrails.map(g => `<p>· ${CH.esc(g)}</p>`).join('')}
   <p>${CH.esc(d.design.method)}</p><p>${CH.esc(back.method || '')}</p>
 </details>`;
+}
+
+function recoveryPanel(d) {
+  const r = d.recovery, src = d.evidence_sources || {};
+  const sourcing = `<p class="rownote">Pooled estimates by source: ${CH.int(src.registry_posted)} posted in the registry · ${CH.int(src.publication_extracted)} extracted from open full text.</p>`;
+  if (!r) return `<section class="vizcard"><h3>7 · Reading the papers the registry left out</h3>
+    <p class="vizsub">Most trials without a usable estimate do have a publication. Tick <b>Read open full text</b> to recover hazard ratios from Europe PMC, with a small model reading only the sentences that could carry one.</p>${sourcing}</section>`;
+  return `<section class="vizcard"><h3>7 · Reading the papers the registry left out</h3>
+  <p class="vizsub">${CH.int(r.candidates)} trials had a publication but no usable estimate · ${CH.int(r.with_full_text)} had open full text · ${CH.int(r.papers_read)} read · ${CH.int(r.trials_recovered)} recovered for this endpoint${r.trials_recovered_other_endpoint ? `, ${CH.int(r.trials_recovered_other_endpoint)} for the other` : ''}.</p>
+  ${sourcing}
+  <div class="vizgrid">
+    <div>${meter(r.token_reduction || 0, null, 'Model input avoided', `${CH.int(r.tokens_measured)} tokens spent vs ${CH.int(r.tokens_if_whole_papers)} if whole papers had been sent`)}</div>
+    <div class="chartlabels"><div class="chartrow"><span class="chip" style="background:${VIZ.good}"></span><span class="rowlabel">Answered by the small model</span><b>${CH.int(r.tier_counts.small)}</b></div>
+      <div class="chartrow"><span class="chip" style="background:${VIZ.accent}"></span><span class="rowlabel">Escalated to the larger model</span><b>${CH.int(r.tier_counts.large)}</b></div>
+      <div class="chartrow"><span class="chip" style="background:${VIZ.context}"></span><span class="rowlabel">Served from cache</span><b>${CH.int(r.tier_counts.cached)}</b></div></div>
+  </div>
+  ${(r.recovered || []).length ? `<table class="datatable"><thead><tr><th>Trial</th><th>Endpoint</th><th>HR (95% CI)</th><th>Read from</th></tr></thead><tbody>
+    ${r.recovered.slice(0, 8).map(x => { const e = x.estimates[0]; return `<tr><td>${CH.esc(x.nct_id)}</td><td>${CH.esc(e.endpoint.toUpperCase())}</td><td>${CH.num(e.hazard_ratio)} (${CH.num(e.ci_lower)}–${CH.num(e.ci_upper)})</td><td><a href="https://europepmc.org/article/PMC/${CH.esc(x.pmcid)}" target="_blank" rel="noreferrer">${CH.esc(x.pmcid)} ↗</a> · ${x.sentences_sent} sentences</td></tr>`; }).join('')}
+  </tbody></table>` : ''}
+  <p class="rownote">Every extracted value was checked against the sentence it came from before being kept: the ratio must be positive, the interval must bracket it, and the quoted evidence must appear in the text. Recovered trials join the published arm by construction; the registry-only arm cannot be rescued from the literature.</p>
+</section>`;
+}
+
+// --- Cascade: candidates for a trial with no identifier link ----------------
+
+async function runCandidates(nct) {
+  if (busy) return; busy = true;
+  message('Retrieving candidate papers from the index, scoring them, and sending only the unclear ones to a small model…');
+  try {
+    candidates = await callJSON('/api/candidates?' + new URLSearchParams({nct}));
+    renderCandidates(); message('');
+  } catch (e) { message(e.message, true); }
+  finally { busy = false; }
+}
+
+const DECISION = {
+  accepted: ['ok', 'Accepted by score'], accepted_by_adjudication: ['ok', 'Accepted · model-assisted'],
+  review: ['warn', 'Needs a human'], rejected_by_adjudication: ['muted', 'Rejected · model-assisted'], rejected: ['muted', 'Rejected by score'],
+};
+
+function renderCandidates() {
+  const c = candidates, t = c.trial;
+  const el = $('#cascadecard'); if (!el) return;
+  if (c.retrieval === 'unavailable') { el.innerHTML = `<h3>Papers the identifiers missed</h3><p class="empty">Candidate search is unavailable: ${CH.esc(c.error || 'Elasticsearch not reachable')}.</p>`; return; }
+  el.innerHTML = `<h3>Papers the identifiers missed</h3>
+  <p class="vizsub">Keyword retrieval over the index → deterministic score → a small model reads only the pairs between ${c.thresholds.reject_below} and ${c.thresholds.accept_at}. ${CH.int(c.llm_tokens)} model tokens spent on this trial.</p>
+  ${c.candidates.length ? `<table class="datatable"><thead><tr><th>Paper</th><th>Score</th><th>Decision</th><th>Why</th></tr></thead><tbody>
+  ${c.candidates.map(x => { const [tone, word] = DECISION[x.decision] || ['muted', x.decision];
+    const why = x.llm && x.llm.reason ? `<i>${CH.esc(x.llm.model)}:</i> ${CH.esc(x.llm.reason)}` : CH.esc((x.match.reasons || [])[0] || '');
+    return `<tr><td>${CH.esc(x.title)}<br><span class="rownote">${x.year || ''} · PMID ${CH.esc(x.pmid || '')}</span></td><td>${CH.num(x.match.score)}</td><td><span class="tag ${tone}">${word}</span></td><td class="rownote">${why}</td></tr>`; }).join('')}
+  </tbody></table>` : '<p class="empty">No candidates retrieved.</p>'}
+  <p class="rownote">${CH.esc(c.note)}</p>`;
+}
+
+// --- Free-text search over the index ---------------------------------------
+
+async function runSearch() {
+  if (!guard('runsearch', 'Searching the index…')) return;
+  try { searchResult = await callJSON('/api/search?' + new URLSearchParams({q: $('#q').value, size: 15})); renderSearch(); message(''); }
+  catch (e) { message(e.message, true); }
+  finally { release('runsearch'); }
+}
+
+function renderSearch() {
+  const r = searchResult;
+  $('#searchpanel').innerHTML = `<div class="sectionhead"><div><span class="eyebrow">EVIDENCE INDEX</span><h2>“${CH.esc(r.query)}”</h2></div><div class="sourcepill">● ${CH.int((r.index || {})['trialtrace-trials'])} trials · ${CH.int((r.index || {})['trialtrace-works'])} papers indexed</div></div>
+  <div class="publist">${r.hits.map(h => { const isTrial = h._index && h._index.endsWith('trials'); const hl = h._highlight ? Object.values(h._highlight).flat()[0] : '';
+    return `<button class="paperrow" data-open="${isTrial ? 'trial:' + CH.esc(h.nct_id) : 'doi:' + CH.esc(h.doi || '')}"><i style="background:${isTrial ? VIZ.good : VIZ.accent};flex-shrink:0"></i><div>${CH.esc(h.title)}<span>${isTrial ? CH.esc(h.nct_id) + ' · ' + CH.esc((h.phases || []).join('/')) : (h.journal ? CH.esc(h.journal) + ' · ' : '') + (h.year || '')} · score ${CH.num(h._score, 1)}</span>${hl ? `<span class="hl">${hl}</span>` : ''}</div></button>`; }).join('') || '<p class="empty">No hits.</p>'}</div>
+  <p class="rownote">Hits are keyword matches over titles, abstracts, conditions, interventions and authors; highlighted text shows what matched. This is the same retrieval that proposes candidates when a trial has no identifier link.</p>`;
+  document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
+    const [kind, value] = el.dataset.open.split(/:(.+)/);
+    if (kind === 'trial' && value) { $('#nct').value = value; setMode('trial'); runTrial(); }
+    else if (kind === 'doi' && value) { $('#doi').value = value; setMode('sources'); checkSources(); }
+  });
 }
 
 // --- Reviewer conflicts ---------------------------------------------------
@@ -201,8 +281,10 @@ ${pubs.length ? `<section class="vizcard"><h3>Which publication actually reports
 </section>
 <section class="vizcard" id="comparecard">${comparisonTable(top)}</section>`
   : '<p class="empty">The registry record links no publications.</p>'}
+<section class="vizcard" id="cascadecard"><h3>Papers the identifiers missed</h3><p class="vizsub">Identifier channels find what declares the trial. This searches the index for papers that might report it without saying so, scores them, and asks a small model only about the unclear ones.</p><button class="external" id="findcandidates">⌕ Search for unlinked publications</button></section>
 <details class="methods"><summary>Sources</summary><p><a href="${CH.esc(t.url)}" target="_blank" rel="noreferrer">${CH.esc(t.nct_id)} on ClinicalTrials.gov ↗</a></p><p>${CH.esc(trial.sampling)}</p></details>`;
 
+  const fc = $('#findcandidates'); if (fc) fc.onclick = () => runCandidates(t.nct_id);
   document.querySelectorAll('[data-pub]').forEach(el => el.onclick = () => {
     document.querySelectorAll('[data-pub]').forEach(o => o.classList.remove('active'));
     el.classList.add('active');

@@ -1,7 +1,9 @@
 requests>=2.32,<3
-networkx>=3.2          # coauthorship ego graphs for reviewer conflicts
-numpy>=1.26            # publication-selection model
-scipy>=1.11            # meta-analysis, power calculations, back-test
+networkx>=3.2                # coauthorship ego graphs for reviewer conflicts
+numpy>=1.26                  # publication-selection model
+scipy>=1.11                  # meta-analysis, power calculations, back-test
+elasticsearch>=9,<10         # candidate retrieval for fuzzy matching, cohort search
 
+# The OpenAI API is called over plain HTTPS with `requests`; no SDK is needed.
 # legacy_plot.py (the superseded matplotlib rendering of the citation graph)
 # additionally needs matplotlib. Nothing else in the project does.

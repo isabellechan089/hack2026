@@ -14,6 +14,8 @@ import requests
 
 from urllib.parse import urlparse
 
+from .. import config  # loads .env before anything reads the environment
+
 CACHE_DIR = os.environ.get(
     "PROVENANCE_CACHE_DIR",
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".cache"),
@@ -68,7 +70,7 @@ def _throttle(url: str) -> None:
     _last_request_at[host] = time.time()
 
 
-def _fetch(url: str, params: Optional[Dict[str, Any]], as_json: bool) -> Any:
+def _fetch(url: str, params: Optional[Dict[str, Any]], as_json: bool, accept: Optional[str] = None) -> Any:
     """Return a cached response body, fetching it over the network if needed."""
     path = _cache_path(url, params)
 
@@ -82,13 +84,14 @@ def _fetch(url: str, params: Optional[Dict[str, Any]], as_json: bool) -> Any:
 
     body = None
     last_error = None
-    for attempt in range(MAX_RETRIES):
+    attempts = 1 if _host(url).endswith("ebi.ac.uk") else MAX_RETRIES
+    for attempt in range(attempts):
         _throttle(url)
         try:
             response = requests.get(
                 url,
                 params=params,
-                headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+                headers={"User-Agent": USER_AGENT, "Accept": accept or ("application/json" if as_json else "*/*")},
                 timeout=30,
             )
             # Back off and retry on rate limiting or a transient server error.
@@ -105,8 +108,8 @@ def _fetch(url: str, params: Optional[Dict[str, Any]], as_json: bool) -> Any:
         except ValueError as exc:
             raise SourceError("response from {} was not valid JSON".format(url)) from exc
     else:
-        raise SourceError("request to {} failed after {} attempts: {}".format(
-            url, MAX_RETRIES, last_error))
+        raise SourceError("request to {} failed after {} attempt(s): {}".format(
+            url, attempts, last_error))
 
     os.makedirs(CACHE_DIR, exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
@@ -119,8 +122,8 @@ def get_json(url: str, params: Optional[Dict[str, Any]] = None) -> Any:
     return _fetch(url, params, as_json=True)
 
 
-def get_text(url: str, params: Optional[Dict[str, Any]] = None) -> str:
-    return _fetch(url, params, as_json=False)
+def get_text(url: str, params: Optional[Dict[str, Any]] = None, accept: Optional[str] = None) -> str:
+    return _fetch(url, params, as_json=False, accept=accept)
 
 
 def polite_params(params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

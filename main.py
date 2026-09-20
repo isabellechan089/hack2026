@@ -14,6 +14,9 @@ from backend.publication_bias.cohort import available_cohorts, cohort_path, desc
 from backend.graph.reviewer_conflicts import find_conflicts, resolve_author
 from backend.sources.clinical_trials import looks_like_nct_id
 from backend.sources.http import SourceError
+from backend.matching.trial_paper_matcher import find_publications_fuzzy
+from backend.search import elastic
+from backend.llm import client as llm_client
 ROOT = Path(__file__).parent
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -57,6 +60,44 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply({'error': str(error)}, 400)
             except Exception:
                 return self.reply({'error': 'The metadata provider could not complete this lookup. Check your connection or OPENALEX_API_KEY, or use the saved demo.'}, 502)
+        if parsed.path == '/api/search':
+            query = parse_qs(parsed.query)
+            q = (query.get('q', [''])[0] or '').strip()
+            if not q:
+                return self.reply({'error': 'Enter a search term.'}, 400)
+            try:
+                return self.reply({'query': q, 'hits': elastic.search(q, size=int(query.get('size', ['12'])[0])),
+                                   'index': elastic.stats()})
+            except Exception:
+                return self.reply({'error': 'Search is not available. Check the Elasticsearch settings in .env.'}, 502)
+        if parsed.path == '/api/candidates':
+            query = parse_qs(parsed.query)
+            nct = (query.get('nct', [''])[0] or '').strip().upper()
+            if not looks_like_nct_id(nct):
+                return self.reply({'error': 'Enter a registry identifier such as NCT00093756.'}, 400)
+            try:
+                from backend.sources.clinical_trials import get_trial
+                trial = get_trial(nct)
+                known = [r['pmid'] for r in trial.linked_references if r.get('pmid')]
+                result = find_publications_fuzzy(trial, exclude_pmids=known,
+                                                 adjudicate=query.get('adjudicate', ['1'])[0] != '0')
+                result['trial'] = {'nct_id': trial.nct_id, 'title': trial.title,
+                                   'interventions': [i.get('name') for i in trial.interventions if i.get('name')][:6],
+                                   'conditions': trial.conditions[:4], 'known_pmids': known}
+                return self.reply(result)
+            except SourceError:
+                return self.reply({'error': 'The registry could not complete this lookup.'}, 502)
+            except Exception:
+                return self.reply({'error': 'Candidate search could not be completed.'}, 502)
+        if parsed.path == '/api/llm-ledger':
+            rows = llm_client.ledger()
+            by = {}
+            for r in rows:
+                key = r.get('purpose', '').split(':')[0] or 'other'
+                b = by.setdefault(key, {'calls': 0, 'prompt_tokens': 0, 'completion_tokens': 0})
+                b['calls'] += 1; b['prompt_tokens'] += r.get('prompt_tokens', 0); b['completion_tokens'] += r.get('completion_tokens', 0)
+            return self.reply({'calls': len(rows), 'by_purpose': by,
+                               'total_tokens': sum(r.get('prompt_tokens', 0) + r.get('completion_tokens', 0) for r in rows)})
         if parsed.path == '/api/cohorts':
             return self.reply({'cohorts': available_cohorts()})
         if parsed.path in ('/api/design', '/api/cohort'):
@@ -86,6 +127,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.reply(describe(cohort))
                 return self.reply(analyze(
                     cohort,
+                    recover=query.get('recover', [''])[0] == '1',
                     assumed_hr=float(query.get('hr', ['0.65'])[0]),
                     alpha=float(query.get('alpha', ['0.05'])[0]),
                     target_power=float(query.get('power', ['0.8'])[0]),

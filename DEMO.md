@@ -72,6 +72,14 @@ Scroll to the back-test: “and this is the part that matters — out of sample,
 literature-only model is systematically optimistic, the registry-aware one is
 close to unbiased.”
 
+If asked where the AI is: tick **Read open full text** and point at section 7.
+“The model reads only the sentences that could carry a hazard ratio — 13
+thousand tokens instead of 354 thousand, every value checked against the
+sentence it came from. Then in Trial ↔ paper, *Search for unlinked
+publications*: it retrieved six look-alikes for this trial, and the model
+rejected all six, naming the design mismatch each time. A metadata score alone
+is never allowed to accept.”
+
 ## If asked about AI
 
 “No language model is in this path. Citation structure, retraction status,

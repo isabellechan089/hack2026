@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data,selected,zoom=1,offset={x:0,y:0},view='graph',busy=false,mode='sources',sources,design,reviewer,trial;
+let data,selected,zoom=1,offset={x:0,y:0},view='graph',busy=false,mode='sources',sources,design,reviewer,trial,searchResult,candidates;
 const colors={retracted:'#b3392f',direct:'#d9722c',indirect:'#4a7fb5',none:'#93a49a'};
 const VIZ={accent:'#d9722c',context:'#8d9d94',good:'#3f7d54',ink:'#213b38',muted:'#75827c',surface:'#ffffff',grid:'#e7ebe4'};
 const statuses={retracted:'Retraction notice found',updated:'Update notice found',no_notice_found:'No notice found',screened:'Screened, not flagged',unknown:'Status unknown'};
@@ -36,9 +36,12 @@ const MODES={
  trial:{panel:'trialpanel',line:'lineTrial',label:'COMPARE WHAT WAS REGISTERED WITH WHAT WAS PUBLISHED',
    hint:'ClinicalTrials.gov registration matched to its publications through PubMed',
    cta:'Compare',has:()=>!!trial,seed:()=>runTrial()},
+ search:{panel:'searchpanel',line:'lineSearch',label:'SEARCH EVERY INDEXED TRIAL AND PAPER',
+   hint:'Keyword retrieval over the Elasticsearch index that feeds fuzzy matching',
+   has:()=>!!searchResult,seed:()=>runSearch()},
 };
-const PANELS=['sourcepanel','workspace','designpanel','reviewerpanel','trialpanel'];
-const LINES=['lineDoi','lineDesign','lineReviewer','lineTrial'];
+const PANELS=['sourcepanel','workspace','designpanel','reviewerpanel','trialpanel','searchpanel'];
+const LINES=['lineDoi','lineDesign','lineReviewer','lineTrial','lineSearch'];
 
 function setMode(next){mode=next;const m=MODES[next];
  for(const k in MODES)$('#mode'+k).classList.toggle('active',k===next);
@@ -56,7 +59,8 @@ Object.keys(MODES).forEach(k=>$('#mode'+k).onclick=()=>setMode(k));
 $('#search').onsubmit=e=>{e.preventDefault();const r=MODES[mode].run;r?r():MODES[mode].seed()};
 $('#rundesign').onclick=e=>{e.preventDefault();runDesign()};
 $('#runreviewer').onclick=e=>{e.preventDefault();runReviewer()};
-$('#runtrial').onclick=e=>{e.preventDefault();runTrial()};$('#demo').onclick=()=>setMode('sources');$('#filter').onchange=draw;$('#find').oninput=draw;
+$('#runtrial').onclick=e=>{e.preventDefault();runTrial()};
+$('#runsearch').onclick=e=>{e.preventDefault();runSearch()};$('#demo').onclick=()=>setMode('sources');$('#filter').onchange=draw;$('#find').oninput=draw;
 async function checkSources(demo=false){if(busy)return;busy=true;$('#explore').disabled=true;$('#demo').disabled=true;
 message(demo?'Loading the saved reference check…':'Reading the reference list and checking each work for retraction notices…');
 try{const r=await fetch(demo?'/api/demo-sources':'/api/sources?'+new URLSearchParams({doi:$('#doi').value}));const result=await r.json();
