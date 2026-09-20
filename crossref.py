@@ -1,49 +1,39 @@
+from api_client import fetch, normalize_doi
+from urllib.parse import quote
+from datetime import datetime, timezone
 import requests
 
-
 def get_crossref_data(doi):
-    clean_doi = doi.replace("https://doi.org/", "")
+    return fetch('https://api.crossref.org/works/' + quote(normalize_doi(doi), safe='/'))['message']
 
-    url = f"https://api.crossref.org/works/{clean_doi}"
-
-    response = requests.get(url)
-    response.raise_for_status()
-
-    data = response.json()
-
-    return data["message"]
-
+def get_retraction_evidence(doi):
+    result = {'status': 'unknown', 'notices': [], 'checked_at': datetime.now(timezone.utc).isoformat(), 'source': 'Crossref'}
+    if not doi:
+        result['reason'] = 'No DOI available.'
+        return result
+    try:
+        clean = normalize_doi(doi)
+        message = fetch('https://api.crossref.org/works', {'filter': f'updates:{clean}', 'rows': 1000})['message']
+        for item in message['items']:
+            for update in item.get('update-to', []):
+                if update.get('DOI', '').lower() == clean:
+                    result['notices'].append({'doi': item.get('DOI'), 'title': (item.get('title') or ['Update notice'])[0], 'type': update.get('type', 'update'), 'date': update.get('updated', {}).get('date-time'), 'source': update.get('source', 'Crossref')})
+        merged = {}
+        for notice in result['notices']:
+            key = (notice['doi'], notice['type'], notice['date'])
+            if key in merged:
+                merged[key]['source'] += ' + ' + notice['source']
+            else:
+                merged[key] = notice
+        result['notices'] = list(merged.values())
+        kinds = {x['type'] for x in result['notices']}
+        result['status'] = 'retracted' if 'retraction' in kinds else 'updated' if kinds else 'no_notice_found'
+        if message.get('total-results', 0) > len(message['items']) and result['status'] != 'retracted':
+            result['status'] = 'unknown'
+            result['reason'] = 'Update results were truncated.'
+    except (requests.RequestException, ValueError, KeyError):
+        result['reason'] = 'Crossref lookup unavailable. Try again later.'
+    return result
 
 def get_retraction_status(doi):
-    if doi is None:
-        return "unknown"
-
-    clean_doi = doi.replace("https://doi.org/", "")
-
-    url = "https://api.crossref.org/works"
-
-    params = {
-        "filter": f"updates:{clean_doi}"
-    }
-
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-
-        data = response.json()
-        results = data["message"]["items"]
-
-        for item in results:
-            updates = item.get("update-to", [])
-
-            for update in updates:
-                if (
-                    update.get("DOI", "").lower() == clean_doi.lower()
-                    and update.get("type", "").lower() == "retraction"
-                ):
-                    return "retracted"
-
-        return "not_retracted"
-
-    except requests.RequestException:
-        return "unknown"
+    return get_retraction_evidence(doi)['status']

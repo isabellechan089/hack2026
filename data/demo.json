@@ -1,0 +1,1370 @@
+{
+  "seed": "https://openalex.org/W3021757537",
+  "nodes": [
+    {
+      "id": "https://openalex.org/W3021757537",
+      "title": "RETRACTED: Myc is a prognostic biomarker and potential therapeutic target in osteosarcoma",
+      "doi": "https://doi.org/10.1177/1758835920922055",
+      "year": 2020,
+      "date": "2020-01-01",
+      "citations": 56,
+      "authors": [
+        "Wenlong Feng",
+        "Dylan C. Dean",
+        "Francis J. Hornicek",
+        "Dimitrios Spentzos",
+        "Robert M. Hoffman"
+      ],
+      "journal": "Therapeutic Advances in Medical Oncology",
+      "openalex_retracted": true,
+      "retraction": {
+        "status": "retracted",
+        "notices": [
+          {
+            "doi": "10.1177/17588359231172420",
+            "title": "Retraction to 10.1177/1758835920922055",
+            "type": "retraction",
+            "date": "2023-04-22T00:00:00Z",
+            "source": "retraction-watch + publisher"
+          }
+        ],
+        "checked_at": "2026-09-19T23:05:08.228852+00:00",
+        "source": "Crossref"
+      },
+      "distance": 0,
+      "exposure": "retracted",
+      "evidence_path": [
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3170090128",
+      "title": "Advancing therapy for osteosarcoma",
+      "doi": "https://doi.org/10.1038/s41571-021-00519-8",
+      "year": 2021,
+      "date": "2021-06-15",
+      "citations": 929,
+      "authors": [
+        "Jonathan Gill",
+        "Richard G\u00f6rlick"
+      ],
+      "journal": "Nature Reviews Clinical Oncology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.720330+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W3170090128",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3217429854",
+      "title": "New Horizons in the Treatment of Osteosarcoma",
+      "doi": "https://doi.org/10.1056/nejmra2103423",
+      "year": 2021,
+      "date": "2021-11-24",
+      "citations": 691,
+      "authors": [
+        "Paul S. Meltzer",
+        "Lee J. Helman"
+      ],
+      "journal": "New England Journal of Medicine",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.720560+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W3217429854",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4321351580",
+      "title": "Targeted therapy for osteosarcoma: a review",
+      "doi": "https://doi.org/10.1007/s00432-023-04614-4",
+      "year": 2023,
+      "date": "2023-02-18",
+      "citations": 98,
+      "authors": [
+        "Shizhe Li",
+        "He Zhang",
+        "Jinxin Liu",
+        "Guanning Shang"
+      ],
+      "journal": "Journal of Cancer Research and Clinical Oncology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.720739+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W4321351580",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4308445935",
+      "title": "Current Status and Prospects of Targeted Therapy for Osteosarcoma",
+      "doi": "https://doi.org/10.3390/cells11213507",
+      "year": 2022,
+      "date": "2022-11-05",
+      "citations": 72,
+      "authors": [
+        "Zunguo Hu",
+        "Shuang Wen",
+        "Zijun Huo",
+        "Qing Wang",
+        "Jiantao Zhao"
+      ],
+      "journal": "Cells",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.720790+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W4308445935",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4386708615",
+      "title": "Osteosarcoma PDX-Derived Cell Line Models for Preclinical Drug Evaluation Demonstrate Metastasis Inhibition by Dinaciclib through a Genome-Targeted Approach",
+      "doi": "https://doi.org/10.1158/1078-0432.ccr-23-0873",
+      "year": 2023,
+      "date": "2023-09-13",
+      "citations": 41,
+      "authors": [
+        "Courtney R. Schott",
+        "Amanda Koehne",
+        "Leanne C. Sayles",
+        "Elizabeth P. Young",
+        "Cuyler Luck"
+      ],
+      "journal": "Clinical Cancer Research",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.721312+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W4386708615",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3133747549",
+      "title": "Co-Operativity between MYC and BCL-2 Pro-Survival Proteins in Cancer",
+      "doi": "https://doi.org/10.3390/ijms22062841",
+      "year": 2021,
+      "date": "2021-03-11",
+      "citations": 41,
+      "authors": [
+        "W. Douglas Fairlie",
+        "Erinna F. Lee"
+      ],
+      "journal": "International Journal of Molecular Sciences",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.721362+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W3133747549",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3162769196",
+      "title": "MYC amplifications are common events in childhood osteosarcoma",
+      "doi": "https://doi.org/10.1002/cjp2.219",
+      "year": 2021,
+      "date": "2021-05-09",
+      "citations": 36,
+      "authors": [
+        "Solange De Noon",
+        "Jannat Ijaz",
+        "Tim Coorens",
+        "Fernanda Amary",
+        "Hongtao Ye"
+      ],
+      "journal": "The Journal of Pathology Clinical Research",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:15.721587+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W3162769196",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4221030539",
+      "title": "MYC inhibition reprograms tumor immune microenvironment by recruiting T lymphocytes and activating the CD40/CD40L system in osteosarcoma",
+      "doi": "https://doi.org/10.1038/s41420-022-00923-8",
+      "year": 2022,
+      "date": "2022-03-15",
+      "citations": 35,
+      "authors": [
+        "Kuo Jiang",
+        "Qian\u2010Feng Zhang",
+        "Yong Fan",
+        "Jia Li",
+        "Jitao Zhang"
+      ],
+      "journal": "Cell Death Discovery",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:16.467394+00:00",
+        "source": "Crossref"
+      },
+      "distance": 1,
+      "exposure": "direct",
+      "evidence_path": [
+        "https://openalex.org/W4221030539",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4313366903",
+      "title": "Osteosarcoma",
+      "doi": "https://doi.org/10.1038/s41572-022-00409-y",
+      "year": 2022,
+      "date": "2022-12-08",
+      "citations": 656,
+      "authors": [
+        "Hannah C. Beird",
+        "Stefan Bielack",
+        "Adrienne M. Flanagan",
+        "Jonathan Gill",
+        "Dominique Heymann"
+      ],
+      "journal": "Nature Reviews Disease Primers",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "updated",
+        "notices": [
+          {
+            "doi": "10.1038/s41572-022-00416-z",
+            "title": "Author Correction: Osteosarcoma",
+            "type": "correction",
+            "date": "2022-12-30T00:00:00Z",
+            "source": "publisher"
+          }
+        ],
+        "checked_at": "2026-09-19T23:03:16.468436+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4313366903",
+        "https://openalex.org/W3170090128",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4401497204",
+      "title": "Current advance of nanotechnology in diagnosis and treatment for malignant tumors",
+      "doi": "https://doi.org/10.1038/s41392-024-01889-y",
+      "year": 2024,
+      "date": "2024-08-11",
+      "citations": 548,
+      "authors": [
+        "Bilan Wang",
+        "Shiqi Hu",
+        "Yan Teng",
+        "Junli Chen",
+        "Haoyuan Wang"
+      ],
+      "journal": "Signal Transduction and Targeted Therapy",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:16.469274+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4401497204",
+        "https://openalex.org/W3170090128",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4291708245",
+      "title": "Role of m6A writers, erasers and readers in cancer",
+      "doi": "https://doi.org/10.1186/s40164-022-00298-7",
+      "year": 2022,
+      "date": "2022-08-09",
+      "citations": 254,
+      "authors": [
+        "Zhen Fang",
+        "Wentong Mei",
+        "Chang Qu",
+        "Jiongdi Lu",
+        "Liang Shang"
+      ],
+      "journal": "Experimental Hematology and Oncology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:16.963708+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4291708245",
+        "https://openalex.org/W3170090128",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4322503534",
+      "title": "Managing the immune microenvironment of osteosarcoma: the outlook for osteosarcoma treatment",
+      "doi": "https://doi.org/10.1038/s41413-023-00246-z",
+      "year": 2023,
+      "date": "2023-02-27",
+      "citations": 233,
+      "authors": [
+        "Hailong Tian",
+        "Jiangjun Cao",
+        "Bowen Li",
+        "Edouard C. Nice",
+        "Haijiao Mao"
+      ],
+      "journal": "Bone Research",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:18.073122+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4322503534",
+        "https://openalex.org/W3170090128",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4399032659",
+      "title": "Notch signaling pathway in cancer: from mechanistic insights to targeted therapies",
+      "doi": "https://doi.org/10.1038/s41392-024-01828-x",
+      "year": 2024,
+      "date": "2024-05-26",
+      "citations": 394,
+      "authors": [
+        "Qingmiao Shi",
+        "Chen Xue",
+        "Yifan Zeng",
+        "Xin Yuan",
+        "Qingfei Chu"
+      ],
+      "journal": "Signal Transduction and Targeted Therapy",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:18.282828+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4399032659",
+        "https://openalex.org/W3217429854",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4328050642",
+      "title": "Active targeting schemes for nano-drug delivery systems in osteosarcoma therapeutics",
+      "doi": "https://doi.org/10.1186/s12951-023-01826-1",
+      "year": 2023,
+      "date": "2023-03-21",
+      "citations": 207,
+      "authors": [
+        "Pengzhi Shi",
+        "Zhangrong Cheng",
+        "Kangcheng Zhao",
+        "Yuhang Chen",
+        "Anran Zhang"
+      ],
+      "journal": "Journal of Nanobiotechnology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:18.518091+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4328050642",
+        "https://openalex.org/W3217429854",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4294958512",
+      "title": "Ewing Sarcoma and Osteosarcoma Have Distinct Immune Signatures and Intercellular Communication Networks",
+      "doi": "https://doi.org/10.1158/1078-0432.ccr-22-1471",
+      "year": 2022,
+      "date": "2022-09-08",
+      "citations": 92,
+      "authors": [
+        "Anthony R. Cillo",
+        "Elina Mukherjee",
+        "Nathanael G. Bailey",
+        "Sayali Onkar",
+        "Jessica D. Daley"
+      ],
+      "journal": "Clinical Cancer Research",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:18.782063+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4294958512",
+        "https://openalex.org/W3217429854",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4403965090",
+      "title": "Nanoparticles and bone microenvironment: a comprehensive review for malignant bone tumor diagnosis and treatment",
+      "doi": "https://doi.org/10.1186/s12943-024-02161-1",
+      "year": 2024,
+      "date": "2024-11-01",
+      "citations": 74,
+      "authors": [
+        "Yujing Guan",
+        "Wei Zhang",
+        "Yuling Mao",
+        "Shenglong Li"
+      ],
+      "journal": "Molecular Cancer",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:19.361159+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4403965090",
+        "https://openalex.org/W4321351580",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4384202913",
+      "title": "Deciphering the Signaling Mechanisms of Osteosarcoma Tumorigenesis",
+      "doi": "https://doi.org/10.3390/ijms241411367",
+      "year": 2023,
+      "date": "2023-07-12",
+      "citations": 39,
+      "authors": [
+        "Bikesh K. Nirala",
+        "Taku Yamamichi",
+        "Jason T. Yustein"
+      ],
+      "journal": "International Journal of Molecular Sciences",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:20.655958+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4384202913",
+        "https://openalex.org/W4321351580",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4390111204",
+      "title": "Current status and future challenges of CAR-T cell therapy for osteosarcoma",
+      "doi": "https://doi.org/10.3389/fimmu.2023.1290762",
+      "year": 2023,
+      "date": "2023-12-22",
+      "citations": 35,
+      "authors": [
+        "Shizhe Li",
+        "He Zhang",
+        "Guanning Shang"
+      ],
+      "journal": "Frontiers in Immunology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:21.029622+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4390111204",
+        "https://openalex.org/W4321351580",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4391899431",
+      "title": "FSP1 is a predictive biomarker of osteosarcoma cells\u2019 susceptibility to ferroptotic cell death and a potential therapeutic target",
+      "doi": "https://doi.org/10.1038/s41420-024-01854-2",
+      "year": 2024,
+      "date": "2024-02-17",
+      "citations": 23,
+      "authors": [
+        "El\u017cbieta Pa\u0144czyszyn",
+        "Valentina Saverio",
+        "Romina Monzani",
+        "Mara Gagliardi",
+        "Jelena Petrovi\u0107"
+      ],
+      "journal": "Cell Death Discovery",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:21.359547+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4391899431",
+        "https://openalex.org/W4321351580",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4407018220",
+      "title": "NGR\u2010Modified CAF\u2010Derived exos Targeting Tumor Vasculature to Induce Ferroptosis and Overcome Chemoresistance in Osteosarcoma",
+      "doi": "https://doi.org/10.1002/advs.202410918",
+      "year": 2025,
+      "date": "2025-01-31",
+      "citations": 47,
+      "authors": [
+        "Jianxin Du",
+        "Xiangwei Meng",
+        "Minghao Yang",
+        "Guo Chen",
+        "Jigang Li"
+      ],
+      "journal": "Advanced Science",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:21.972374+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4407018220",
+        "https://openalex.org/W4308445935",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4377041879",
+      "title": "Different Subtypes of Osteosarcoma: Histopathological Patterns and Clinical Behaviour",
+      "doi": "https://doi.org/10.3390/jmp4020011",
+      "year": 2023,
+      "date": "2023-05-16",
+      "citations": 46,
+      "authors": [
+        "Emel Rothzerg",
+        "Jiake Xu",
+        "David Wood"
+      ],
+      "journal": "Journal of Molecular Pathology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:22.111657+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4377041879",
+        "https://openalex.org/W4308445935",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4404625924",
+      "title": "Chemotherapy, immunotherapy, and targeted therapy for osteosarcoma: Recent advancements",
+      "doi": "https://doi.org/10.1016/j.critrevonc.2024.104575",
+      "year": 2024,
+      "date": "2024-11-22",
+      "citations": 36,
+      "authors": [
+        "Esther Ekpe Adewuyi",
+        "Harshal Chorya",
+        "Abdulbasit Opeyemi Muili",
+        "Abdulrahmon Moradeyo",
+        "Ayomide Timilehin Kayode"
+      ],
+      "journal": "Critical Reviews in Oncology/Hematology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:22.809589+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4404625924",
+        "https://openalex.org/W4308445935",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4401448549",
+      "title": "Unraveling molecular aberrations and pioneering therapeutic strategies in osteosarcoma",
+      "doi": "https://doi.org/10.1016/j.bbcan.2024.189171",
+      "year": 2024,
+      "date": "2024-08-08",
+      "citations": 30,
+      "authors": [
+        "Peng Yan",
+        "Jie Wang",
+        "Bin Yue",
+        "Xinyi Wang"
+      ],
+      "journal": "Biochimica et Biophysica Acta (BBA) - Reviews on Cancer",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:23.226638+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4401448549",
+        "https://openalex.org/W4308445935",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4406160656",
+      "title": "Patient-derived xenograft models: Current status, challenges, and innovations in cancer research",
+      "doi": "https://doi.org/10.1016/j.gendis.2025.101520",
+      "year": 2025,
+      "date": "2025-01-08",
+      "citations": 35,
+      "authors": [
+        "Min Liu",
+        "Xiaoping Yang"
+      ],
+      "journal": "Genes & Diseases",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:24.374788+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4406160656",
+        "https://openalex.org/W4386708615",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4402894709",
+      "title": "The roles of patient\u2010derived xenograft models and artificial intelligence toward precision medicine",
+      "doi": "https://doi.org/10.1002/mco2.745",
+      "year": 2024,
+      "date": "2024-09-25",
+      "citations": 26,
+      "authors": [
+        "Venkatachalababu Janitri",
+        "K.N. ArulJothi",
+        "Vijay Murali Ravi Mythili",
+        "Sachin Kumar Singh",
+        "Parteek Prasher"
+      ],
+      "journal": "MedComm",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:24.761782+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4402894709",
+        "https://openalex.org/W4386708615",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4409147818",
+      "title": "Spatial Profiling Identifies Regionally Distinct Microenvironments and Targetable Immunosuppressive Mechanisms in Pediatric Osteosarcoma Pulmonary Metastases",
+      "doi": "https://doi.org/10.1158/0008-5472.can-24-3723",
+      "year": 2025,
+      "date": "2025-04-02",
+      "citations": 18,
+      "authors": [
+        "Jason Eigenbrood",
+        "Nathan Wong",
+        "Paul Mallory",
+        "Janice S. Pereira",
+        "Demond Williams"
+      ],
+      "journal": "Cancer Research",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:25.075566+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4409147818",
+        "https://openalex.org/W4386708615",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4399604053",
+      "title": "Biological Sample Collection to Advance Research and Treatment: A Fight Osteosarcoma Through European Research and Euro Ewing Consortium Statement",
+      "doi": "https://doi.org/10.1158/1078-0432.ccr-24-0101",
+      "year": 2024,
+      "date": "2024-06-13",
+      "citations": 16,
+      "authors": [
+        "Darrell Green",
+        "Roelof van Ewijk",
+        "Elisa Tirtei",
+        "Dimosthenis Andreou",
+        "Fredrik Baecklund"
+      ],
+      "journal": "Clinical Cancer Research",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:25.373979+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4399604053",
+        "https://openalex.org/W4386708615",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W3187599602",
+      "title": "MYC: a multipurpose oncogene with prognostic and therapeutic implications in blood malignancies",
+      "doi": "https://doi.org/10.1186/s13045-021-01111-4",
+      "year": 2021,
+      "date": "2021-08-09",
+      "citations": 226,
+      "authors": [
+        "Seyed Esmaeil Ahmadi",
+        "Samira Rahimi",
+        "Bahman Zarandi",
+        "Rouzbeh Chegeni",
+        "Majid Safa"
+      ],
+      "journal": "Journal of Hematology & Oncology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "updated",
+        "notices": [
+          {
+            "doi": "10.1186/s13045-021-01152-9",
+            "title": "Correction to: MYC: a multipurpose oncogene with prognostic and therapeutic implications in blood malignancies",
+            "type": "correction",
+            "date": "2021-09-03T00:00:00Z",
+            "source": "publisher"
+          }
+        ],
+        "checked_at": "2026-09-19T23:03:26.141694+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W3187599602",
+        "https://openalex.org/W3133747549",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4384401274",
+      "title": "MYC Oncogene: A Druggable Target for Treating Cancers with Natural Products",
+      "doi": "https://doi.org/10.14336/ad.2023.0520",
+      "year": 2024,
+      "date": "2024-01-01",
+      "citations": 44,
+      "authors": [
+        "Ka Iong Chan",
+        "Siyuan Zhang",
+        "Guodong Li",
+        "Yida Xu",
+        "Liao Cui"
+      ],
+      "journal": "Aging and Disease",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:26.498933+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4384401274",
+        "https://openalex.org/W3133747549",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4385759434",
+      "title": "DNAi-peptide nanohybrid smart particles target BCL-2 oncogene and induce apoptosis in breast cancer cells",
+      "doi": "https://doi.org/10.1016/j.biopha.2023.115299",
+      "year": 2023,
+      "date": "2023-08-11",
+      "citations": 30,
+      "authors": [
+        "Mohsen Alipour",
+        "Reza Sheikhnejad",
+        "Mohamad Hassan Fouani",
+        "Hassan Bardania",
+        "Saman Hosseinkhani"
+      ],
+      "journal": "Biomedicine & Pharmacotherapy",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:26.615698+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4385759434",
+        "https://openalex.org/W3133747549",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4364375769",
+      "title": "Advances in molecular targeted therapies to increase efficacy of (chemo)radiation therapy",
+      "doi": "https://doi.org/10.1007/s00066-023-02064-y",
+      "year": 2023,
+      "date": "2023-04-11",
+      "citations": 23,
+      "authors": [
+        "Kristina Viktorsson",
+        "Thorsten Rieckmann",
+        "Maximilian Fleischmann",
+        "Markus Diefenhardt",
+        "Stephanie Hehlgans"
+      ],
+      "journal": "Strahlentherapie und Onkologie",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:26.724697+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4364375769",
+        "https://openalex.org/W3133747549",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4387779792",
+      "title": "Osteosarcoma in Pediatric and Adult Populations: Are Adults Just Big Kids?",
+      "doi": "https://doi.org/10.3390/cancers15205044",
+      "year": 2023,
+      "date": "2023-10-19",
+      "citations": 50,
+      "authors": [
+        "Caleb Kim",
+        "Lara E. Davis",
+        "Catherine M. Albert",
+        "Brian L. Samuels",
+        "Jesse L. Roberts"
+      ],
+      "journal": "Cancers",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:27.722161+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4387779792",
+        "https://openalex.org/W3162769196",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4382045400",
+      "title": "Dog breeds and conformations predisposed to osteosarcoma in the UK: a VetCompass study",
+      "doi": "https://doi.org/10.1186/s40575-023-00131-2",
+      "year": 2023,
+      "date": "2023-06-26",
+      "citations": 34,
+      "authors": [
+        "Dan G. O\u2019Neill",
+        "Grace L. Edmunds",
+        "Jade Urquhart-Gilmore",
+        "David B. Church",
+        "Lynda Rutherford"
+      ],
+      "journal": "Canine Medicine and Genetics",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:27.832373+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4382045400",
+        "https://openalex.org/W3162769196",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4361253250",
+      "title": "Clinical Targeted Next-Generation Panel Sequencing Reveals MYC Amplification Is a Poor Prognostic Factor in Osteosarcoma",
+      "doi": "https://doi.org/10.1200/po.22.00334",
+      "year": 2023,
+      "date": "2023-03-01",
+      "citations": 34,
+      "authors": [
+        "Amanda Marinoff",
+        "Liam F. Spurr",
+        "Christina Fong",
+        "Yvonne Y. Li",
+        "Suzanne J. Forrest"
+      ],
+      "journal": "JCO Precision Oncology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:28.135356+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4361253250",
+        "https://openalex.org/W3162769196",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4384485939",
+      "title": "Super-enhancer-driven MLX mediates redox balance maintenance via SLC7A11 in osteosarcoma",
+      "doi": "https://doi.org/10.1038/s41419-023-05966-y",
+      "year": 2023,
+      "date": "2023-07-17",
+      "citations": 27,
+      "authors": [
+        "Weitang Guo",
+        "Xin Wang",
+        "Bing Lu",
+        "Jiaming Yu",
+        "Mingxian Xu"
+      ],
+      "journal": "Cell Death and Disease",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:28.187233+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4384485939",
+        "https://openalex.org/W3162769196",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4366140591",
+      "title": "c-Myc-Targeting PROTAC Based on a TNA-DNA Bivalent Binder for Combination Therapy of Triple-Negative Breast Cancer",
+      "doi": "https://doi.org/10.1021/jacs.3c02619",
+      "year": 2023,
+      "date": "2023-04-17",
+      "citations": 133,
+      "authors": [
+        "Xintong Li",
+        "Ze Zhang",
+        "Fangyan Gao",
+        "Yuxuan Ma",
+        "Dongying Wei"
+      ],
+      "journal": "Journal of the American Chemical Society",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:28.704944+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4366140591",
+        "https://openalex.org/W4221030539",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4292265407",
+      "title": "The roles of glycolysis in osteosarcoma",
+      "doi": "https://doi.org/10.3389/fphar.2022.950886",
+      "year": 2022,
+      "date": "2022-08-17",
+      "citations": 62,
+      "authors": [
+        "Zuxi Feng",
+        "Yanghuan Ou",
+        "Liang Hao"
+      ],
+      "journal": "Frontiers in Pharmacology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:29.284951+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4292265407",
+        "https://openalex.org/W4221030539",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4391649706",
+      "title": "Targeting MYC at the intersection between cancer metabolism and oncoimmunology",
+      "doi": "https://doi.org/10.3389/fimmu.2024.1324045",
+      "year": 2024,
+      "date": "2024-02-07",
+      "citations": 35,
+      "authors": [
+        "Simran Venkatraman",
+        "Brinda Balasubramanian",
+        "Chanitra Thuwajit",
+        "Jarek Meller",
+        "Rutaiwan Tohtong"
+      ],
+      "journal": "Frontiers in Immunology",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "no_notice_found",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:30.030875+00:00",
+        "source": "Crossref"
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4391649706",
+        "https://openalex.org/W4221030539",
+        "https://openalex.org/W3021757537"
+      ]
+    },
+    {
+      "id": "https://openalex.org/W4304190307",
+      "title": "Regulation of Extracellular Vesicle-Mediated Immune Responses against Antigen-Specific Presentation",
+      "doi": "https://doi.org/10.3390/vaccines10101691",
+      "year": 2022,
+      "date": "2022-10-10",
+      "citations": 34,
+      "authors": [
+        "Yasunari Matsuzaka",
+        "Ryu Yashiro"
+      ],
+      "journal": "Vaccines",
+      "openalex_retracted": false,
+      "retraction": {
+        "status": "unknown",
+        "notices": [],
+        "checked_at": "2026-09-19T23:03:30.399511+00:00",
+        "source": "Crossref",
+        "reason": "Crossref lookup unavailable. Try again later."
+      },
+      "distance": 2,
+      "exposure": "indirect",
+      "evidence_path": [
+        "https://openalex.org/W4304190307",
+        "https://openalex.org/W4221030539",
+        "https://openalex.org/W3021757537"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "https://openalex.org/W3133747549",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W3162769196",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W3170090128",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W3187599602",
+      "target": "https://openalex.org/W3133747549"
+    },
+    {
+      "source": "https://openalex.org/W3217429854",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W4221030539",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W4291708245",
+      "target": "https://openalex.org/W3170090128"
+    },
+    {
+      "source": "https://openalex.org/W4292265407",
+      "target": "https://openalex.org/W4221030539"
+    },
+    {
+      "source": "https://openalex.org/W4294958512",
+      "target": "https://openalex.org/W3217429854"
+    },
+    {
+      "source": "https://openalex.org/W4304190307",
+      "target": "https://openalex.org/W4221030539"
+    },
+    {
+      "source": "https://openalex.org/W4308445935",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W4313366903",
+      "target": "https://openalex.org/W3170090128"
+    },
+    {
+      "source": "https://openalex.org/W4313366903",
+      "target": "https://openalex.org/W3217429854"
+    },
+    {
+      "source": "https://openalex.org/W4321351580",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W4322503534",
+      "target": "https://openalex.org/W3170090128"
+    },
+    {
+      "source": "https://openalex.org/W4328050642",
+      "target": "https://openalex.org/W3217429854"
+    },
+    {
+      "source": "https://openalex.org/W4361253250",
+      "target": "https://openalex.org/W3162769196"
+    },
+    {
+      "source": "https://openalex.org/W4364375769",
+      "target": "https://openalex.org/W3133747549"
+    },
+    {
+      "source": "https://openalex.org/W4366140591",
+      "target": "https://openalex.org/W4221030539"
+    },
+    {
+      "source": "https://openalex.org/W4377041879",
+      "target": "https://openalex.org/W4308445935"
+    },
+    {
+      "source": "https://openalex.org/W4382045400",
+      "target": "https://openalex.org/W3162769196"
+    },
+    {
+      "source": "https://openalex.org/W4384202913",
+      "target": "https://openalex.org/W4321351580"
+    },
+    {
+      "source": "https://openalex.org/W4384401274",
+      "target": "https://openalex.org/W3133747549"
+    },
+    {
+      "source": "https://openalex.org/W4384485939",
+      "target": "https://openalex.org/W3162769196"
+    },
+    {
+      "source": "https://openalex.org/W4385759434",
+      "target": "https://openalex.org/W3133747549"
+    },
+    {
+      "source": "https://openalex.org/W4386708615",
+      "target": "https://openalex.org/W3021757537"
+    },
+    {
+      "source": "https://openalex.org/W4387779792",
+      "target": "https://openalex.org/W3162769196"
+    },
+    {
+      "source": "https://openalex.org/W4390111204",
+      "target": "https://openalex.org/W4321351580"
+    },
+    {
+      "source": "https://openalex.org/W4391649706",
+      "target": "https://openalex.org/W4221030539"
+    },
+    {
+      "source": "https://openalex.org/W4391899431",
+      "target": "https://openalex.org/W4321351580"
+    },
+    {
+      "source": "https://openalex.org/W4399032659",
+      "target": "https://openalex.org/W3217429854"
+    },
+    {
+      "source": "https://openalex.org/W4399604053",
+      "target": "https://openalex.org/W4386708615"
+    },
+    {
+      "source": "https://openalex.org/W4401448549",
+      "target": "https://openalex.org/W4308445935"
+    },
+    {
+      "source": "https://openalex.org/W4401497204",
+      "target": "https://openalex.org/W3170090128"
+    },
+    {
+      "source": "https://openalex.org/W4402894709",
+      "target": "https://openalex.org/W4386708615"
+    },
+    {
+      "source": "https://openalex.org/W4403965090",
+      "target": "https://openalex.org/W4321351580"
+    },
+    {
+      "source": "https://openalex.org/W4404625924",
+      "target": "https://openalex.org/W4308445935"
+    },
+    {
+      "source": "https://openalex.org/W4406160656",
+      "target": "https://openalex.org/W4386708615"
+    },
+    {
+      "source": "https://openalex.org/W4407018220",
+      "target": "https://openalex.org/W4308445935"
+    },
+    {
+      "source": "https://openalex.org/W4409147818",
+      "target": "https://openalex.org/W4386708615"
+    }
+  ],
+  "generated_at": "2026-09-19T23:03:31.512110+00:00",
+  "mode": "snapshot",
+  "depth": 2,
+  "warnings": [
+    "Retraction status is unknown for 8 papers. See individual records for details."
+  ],
+  "sampling": "Top 8 citing works by citation count at the first hop; up to 4 per paper at the second hop. Not an exhaustive network. Metadata cached for up to 24 hours."
+}
