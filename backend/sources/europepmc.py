@@ -18,10 +18,11 @@ Two things are deliberate here:
 import json
 import os
 import re
+import time
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, Iterable, List, Optional
 
-from .http import CACHE_DIR, SourceError, get_json, get_text
+from .http import CACHE_DIR, SourceError, SourceNotFound, get_json, get_text
 
 API = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 
@@ -39,12 +40,37 @@ def _load_misses() -> Dict[str, str]:
         return {}
 
 
-def _remember_miss(pmcid: str, reason: str) -> None:
+# How long a transient failure is believed before the article is tried again.
+# A miss used to be forever: the list was consulted before every fetch and never
+# expired, so one slow afternoon removed an article from the corpus for good.
+_MISS_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _remember_miss(pmcid: str, reason: str, permanent: bool = False) -> None:
     misses = _load_misses()
-    misses[pmcid] = reason
+    misses[pmcid] = {"reason": reason, "at": time.time(), "permanent": permanent}
     os.makedirs(CACHE_DIR, exist_ok=True)
     with open(_MISSES, "w", encoding="utf-8") as handle:
         json.dump(misses, handle)
+
+
+def _should_skip(pmcid: str) -> bool:
+    """Whether a remembered failure still stands.
+
+    Only an article Europe PMC says it does not have is skipped for good.
+    Everything else is worth asking about again once, after a while.
+    """
+    entry = _load_misses().get(pmcid)
+    if entry is None:
+        return False
+    if not isinstance(entry, dict):
+        # Written before misses recorded why they happened: a bare reason
+        # string. There is no way to tell a timeout from an absent article, so
+        # give it the benefit of the doubt and try once more.
+        return False
+    if entry.get("permanent"):
+        return True
+    return (time.time() - float(entry.get("at") or 0)) < _MISS_TTL_SECONDS
 
 # Cue words that mark a sentence as possibly carrying a hazard ratio.
 #
@@ -109,17 +135,21 @@ def full_text(pmcid: str) -> Optional[Dict[str, Any]]:
     """Plain text of an article, split into sections where the XML marks them."""
     if not pmcid:
         return None
-    if pmcid in _load_misses():
+    if _should_skip(pmcid):
         return None
     try:
         xml = get_text("{}/{}/fullTextXML".format(API, pmcid), accept="application/xml")
+    except SourceNotFound as exc:
+        _remember_miss(pmcid, "absent: {}".format(str(exc)[:80]), permanent=True)
+        return None
     except SourceError as exc:
         _remember_miss(pmcid, "fetch: {}".format(str(exc)[:80]))
         return None
     try:
         root = ET.fromstring(xml)
     except ET.ParseError:
-        _remember_miss(pmcid, "parse")
+        # The body is cached, so asking again would re-read the same bad XML.
+        _remember_miss(pmcid, "parse", permanent=True)
         return None
 
     sections: List[Dict[str, str]] = []

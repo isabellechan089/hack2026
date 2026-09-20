@@ -210,7 +210,7 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-146 tests, all offline. The statistics are checked against closed-form values
+154 tests, all offline. The statistics are checked against closed-form values
 (Schoenfeld event counts, DerSimonian-Laird pooling, the Egger regression) and
 against synthetic data with a known answer, so a regression in the maths fails
 a test rather than producing a plausible-looking number. The interface is
@@ -409,7 +409,7 @@ retraction_check.py   screen a paper's own reference list
 static/               SVG citation graph UI
 data/cohorts/         saved cohorts      data/demo.json  saved graph snapshot
 Dockerfile            python:3.11-slim, no build step
-tests/                146 offline tests, including the executed frontend
+tests/                154 offline tests, including the executed frontend
 ```
 
 ---
@@ -425,9 +425,16 @@ Stated plainly so the gaps are not mistaken for claims:
   index, so candidate search currently mainly *prevents* false links.
 - **Full-text recovery is bounded by what Europe PMC will serve.** 43% of the
   eligible papers had open full text and just under half of those returned an
-  article; recovery reached 5 of 149 trials. The bottleneck is the fetch, not
-  the reduction step: of 97 remembered failures, 97 are fetch errors and none
-  is a parse error. Measured over the 58 articles that did come back, 34
+  article; recovery reached 5 of 149 trials. The bottleneck was the fetch, not
+  the reduction step: of 97 remembered failures, 97 were fetch errors and none
+  was a parse error. Europe PMC was the one host pinned to a single attempt on
+  the shared 30-second deadline, and a failure was remembered forever, so one
+  slow afternoon removed an article from the corpus permanently. It now gets
+  three attempts at a 60-second deadline instead of one at 30, a transient miss
+  expires after a week, and only an article Europe PMC says it does not have is
+  remembered for good. Because recovery runs inside a request, the whole pass
+  is also capped at two minutes and reports where it stopped. The 5-of-149 figure predates that fix
+  and has not been re-measured against the live API. Measured over the 58 articles that did come back, 34
   contain no hazard ratio anywhere — single-arm phase I/II studies, plain-
   language summaries and pharmacokinetic papers, none of which can produce one
   — 21 extract cleanly, and 3 mention hazard ratios only in a methods sentence

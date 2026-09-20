@@ -9,7 +9,7 @@ import json
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, mock_open, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -134,6 +134,128 @@ class EuropePMCTests(unittest.TestCase):
             art = europepmc.full_text("PMC1")
         table = next(s for s in art["sections"] if s["title"] == "table")
         self.assertLessEqual(len(table["text"]), europepmc._MAX_TABLE_CHARS)
+
+
+    def test_full_text_retries_a_remembered_timeout(self):
+        """A transient failure must not remove an article from the corpus.
+
+        The miss list is consulted before every fetch. While it never expired,
+        one slow afternoon blacklisted a paper for good -- which is where most
+        of the recovery funnel was being lost.
+        """
+        xml = "<article><body><sec><title>Results</title><p>HR 0.65 (0.50-0.85).</p></sec></body></article>"
+        stale = {"reason": "fetch: timeout", "at": 0, "permanent": False}
+        for name, entry in (("legacy string", "fetch: timeout"), ("expired", stale)):
+            with self.subTest(name):
+                with patch.object(europepmc, "_load_misses", return_value={"PMC1": entry}), \
+                     patch.object(europepmc, "_remember_miss"), \
+                     patch.object(europepmc, "get_text", return_value=xml) as fetch:
+                    art = europepmc.full_text("PMC1")
+                self.assertTrue(fetch.called)
+                self.assertIsNotNone(art)
+
+    def test_full_text_honours_a_fresh_or_permanent_miss(self):
+        """Retrying is for timeouts, not for articles Europe PMC does not hold."""
+        import time as _time
+        cases = {
+            "absent for good": {"reason": "absent", "at": _time.time(), "permanent": True},
+            "recently failed": {"reason": "fetch: timeout", "at": _time.time(), "permanent": False},
+        }
+        for name, entry in cases.items():
+            with self.subTest(name):
+                with patch.object(europepmc, "_load_misses", return_value={"PMC1": entry}), \
+                     patch.object(europepmc, "get_text") as fetch:
+                    self.assertIsNone(europepmc.full_text("PMC1"))
+                self.assertFalse(fetch.called)
+
+    def test_absent_article_is_remembered_as_permanent(self):
+        """A 404 is an answer. Recording it as a timeout would retry it weekly."""
+        from backend.sources.http import SourceNotFound
+        with patch.object(europepmc, "_load_misses", return_value={}), \
+             patch.object(europepmc, "get_text", side_effect=SourceNotFound("404")), \
+             patch.object(europepmc, "_remember_miss") as remember:
+            self.assertIsNone(europepmc.full_text("PMC1"))
+        self.assertTrue(remember.call_args[1]["permanent"])
+
+
+class HttpRetryTests(unittest.TestCase):
+    """The fetch layer's retry and deadline behaviour."""
+
+    def setUp(self):
+        from backend.sources import http
+        self.http = http
+
+    def _response(self, status=200, text="ok"):
+        r = MagicMock()
+        r.status_code = status
+        r.text = text
+        r.json.return_value = {"ok": True}
+        r.raise_for_status.return_value = None
+        return r
+
+    def test_full_text_host_is_retried_like_every_other(self):
+        """Europe PMC was the one host pinned to a single attempt."""
+        calls = []
+        def flaky(url, **kwargs):
+            calls.append(url)
+            return self._response(503 if len(calls) < 3 else 200, "<article/>")
+        with patch.object(self.http, "USE_CACHE", False), \
+             patch.object(self.http.requests, "get", side_effect=flaky), \
+             patch.object(self.http.time, "sleep"), \
+             patch.object(self.http.os, "makedirs"), \
+             patch("builtins.open", mock_open()):
+            body = self.http.get_text("https://www.ebi.ac.uk/europepmc/webservices/rest/PMC1/fullTextXML")
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(body, "<article/>")
+
+    def test_full_text_host_gets_a_longer_deadline(self):
+        """A whole article takes tens of seconds; a metadata lookup does not."""
+        seen = {}
+        def record(url, **kwargs):
+            seen[url] = kwargs["timeout"]
+            return self._response(200, "x")
+        with patch.object(self.http, "USE_CACHE", False), \
+             patch.object(self.http.requests, "get", side_effect=record), \
+             patch.object(self.http.os, "makedirs"), \
+             patch("builtins.open", mock_open()):
+            self.http.get_text("https://www.ebi.ac.uk/europepmc/webservices/rest/PMC1/fullTextXML")
+            self.http.get_json("https://api.openalex.org/works/W1")
+        self.assertGreater(seen["https://www.ebi.ac.uk/europepmc/webservices/rest/PMC1/fullTextXML"],
+                           seen["https://api.openalex.org/works/W1"])
+
+    def test_missing_record_fails_fast_and_distinctly(self):
+        """Retrying a 404 spends three more requests to be told the same thing."""
+        calls = []
+        def missing(url, **kwargs):
+            calls.append(url)
+            return self._response(404)
+        with patch.object(self.http, "USE_CACHE", False), \
+             patch.object(self.http.requests, "get", side_effect=missing), \
+             patch.object(self.http.time, "sleep"):
+            with self.assertRaises(self.http.SourceNotFound):
+                self.http.get_json("https://api.example.org/missing")
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(issubclass(self.http.SourceNotFound, self.http.SourceError))
+
+
+    def test_full_text_host_attempts_are_bounded(self):
+        """Retries must not turn one slow article into a stalled request.
+
+        This path runs synchronously while somebody waits, so attempts x the
+        per-attempt deadline is a wall-clock promise, not just a retry policy.
+        """
+        calls = []
+        def down(url, **kwargs):
+            calls.append(kwargs["timeout"])
+            return self._response(503)
+        with patch.object(self.http, "USE_CACHE", False), \
+             patch.object(self.http.requests, "get", side_effect=down), \
+             patch.object(self.http.time, "sleep"):
+            with self.assertRaises(self.http.SourceError):
+                self.http.get_text("https://www.ebi.ac.uk/europepmc/webservices/rest/PMC1/fullTextXML")
+        self.assertEqual(len(calls), 3)
+        self.assertLessEqual(len(calls) * calls[0], 200)
+
 
 
 class LLMClientTests(unittest.TestCase):
@@ -308,6 +430,23 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(report["tokens_measured"], 300)
         self.assertEqual(report["tokens_spent_total"], 300)
         self.assertGreater(report["token_reduction"], 0.5)
+
+
+    def test_recovery_stops_on_the_clock_and_says_so(self):
+        """A partial recovery is reported as partial, not as a finished run."""
+        from backend.publication_bias import fulltext
+        cohort = MagicMock()
+        item = MagicMock()
+        item.category.return_value = "no_usable_result"
+        item.links = [MagicMock(pmid="7")]
+        cohort.trials = [item, item, item]
+        cohort.endpoint_class = "pfs"
+        with patch.object(fulltext.europepmc, "availability", return_value={}), \
+             patch.object(fulltext.europepmc, "full_text") as full:
+            report = fulltext.recover(cohort, time_budget=-1)
+        self.assertFalse(full.called)
+        self.assertIn("time budget", report["stopped_early"])
+        self.assertEqual(report["papers_read"], 0)
 
 
 class CategoryBreakdownTests(unittest.TestCase):

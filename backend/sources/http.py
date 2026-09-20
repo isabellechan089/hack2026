@@ -38,6 +38,21 @@ NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")
 MAX_RETRIES = 4
 BACKOFF_SECONDS = 1.0
 
+# Europe PMC serves whole articles rather than metadata and is slow by nature --
+# tens of seconds for a long one -- so it needs a longer deadline. It was
+# previously the one host given a single attempt, on the shared 30-second
+# deadline, which made a transient timeout indistinguishable from an article
+# that does not exist. Combined with a miss list that never expired, that lost
+# rather more than half of the full-text fetches in a cohort, permanently.
+# Three attempts rather than four, at 60 seconds rather than 90: an article
+# that has not arrived twice is usually not arriving, and this path runs inside
+# a synchronous request while somebody waits. Worst case per article is about
+# three minutes, against thirty seconds before -- which is the price of not
+# losing the article permanently -- and `recover` caps the run as a whole.
+_TIMEOUT_SECONDS = {"www.ebi.ac.uk": 60}
+_ATTEMPTS = {"www.ebi.ac.uk": 3}
+_DEFAULT_TIMEOUT = 30
+
 # Per-host pacing. NCBI E-utilities allows 3 requests/second without an API
 # key (10/s with one); the scholarly APIs are far more permissive.
 _MIN_INTERVAL_SECONDS = {
@@ -49,6 +64,16 @@ _last_request_at: Dict[str, float] = {}
 
 class SourceError(RuntimeError):
     """An external source failed in a way the caller should handle gracefully."""
+
+
+class SourceNotFound(SourceError):
+    """The source answered, and the record genuinely is not there.
+
+    Kept distinct from SourceError so a caller can tell "this will never work"
+    from "this did not work just now", and decide whether it is worth asking
+    again later. Retrying a 404 cannot change the answer; retrying a timeout
+    often can.
+    """
 
 
 def _cache_path(url: str, params: Optional[Dict[str, Any]]) -> str:
@@ -84,7 +109,7 @@ def _fetch(url: str, params: Optional[Dict[str, Any]], as_json: bool, accept: Op
 
     body = None
     last_error = None
-    attempts = 1 if _host(url).endswith("ebi.ac.uk") else MAX_RETRIES
+    attempts = _ATTEMPTS.get(_host(url), MAX_RETRIES)
     for attempt in range(attempts):
         _throttle(url)
         try:
@@ -92,19 +117,25 @@ def _fetch(url: str, params: Optional[Dict[str, Any]], as_json: bool, accept: Op
                 url,
                 params=params,
                 headers={"User-Agent": USER_AGENT, "Accept": accept or ("application/json" if as_json else "*/*")},
-                timeout=30,
+                timeout=_TIMEOUT_SECONDS.get(_host(url), _DEFAULT_TIMEOUT),
             )
+            # A missing record is an answer, not a failure. Retrying it wastes
+            # three more requests and several seconds to be told the same thing.
+            if response.status_code in (404, 410):
+                raise SourceNotFound("{} returned HTTP {}".format(url, response.status_code))
             # Back off and retry on rate limiting or a transient server error.
             if response.status_code in (429, 500, 502, 503, 504):
                 last_error = "HTTP {}".format(response.status_code)
-                time.sleep(BACKOFF_SECONDS * (2 ** attempt))
+                if attempt + 1 < attempts:
+                    time.sleep(BACKOFF_SECONDS * (2 ** attempt))
                 continue
             response.raise_for_status()
             body = response.json() if as_json else response.text
             break
         except requests.RequestException as exc:
             last_error = str(exc)
-            time.sleep(BACKOFF_SECONDS * (2 ** attempt))
+            if attempt + 1 < attempts:
+                time.sleep(BACKOFF_SECONDS * (2 ** attempt))
         except ValueError as exc:
             raise SourceError("response from {} was not valid JSON".format(url)) from exc
     else:

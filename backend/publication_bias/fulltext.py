@@ -13,6 +13,7 @@ construction, so it joins category A. The registry-only arm (B) cannot be
 rescued from the literature, because there is nothing to read.
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 from ..llm import client, extraction
@@ -22,8 +23,18 @@ from .cohort import Cohort
 from .linkage import CATEGORY_C
 
 
-def recover(cohort: Cohort, max_papers: int = 80, run_one_baseline: bool = False) -> Dict[str, Any]:
+# This runs inside a request while somebody waits, and Europe PMC is slow
+# enough that a paper count alone does not bound it: eighty articles that each
+# time out would hold the connection open for hours. The run is capped by the
+# clock as well, and reports where it stopped rather than pretending it
+# finished -- a partial recovery is a partial recovery.
+_TIME_BUDGET_SECONDS = 120.0
+
+
+def recover(cohort: Cohort, max_papers: int = 80, run_one_baseline: bool = False,
+            time_budget: float = _TIME_BUDGET_SECONDS) -> Dict[str, Any]:
     """Attach publication-extracted hazard ratios to trials that lack one."""
+    deadline = time.time() + time_budget
     endpoint = cohort.endpoint_class
     targets = [t for t in cohort.trials if t.category(endpoint) == CATEGORY_C and t.links]
     pmids = [l.pmid for t in targets for l in t.links if l.pmid]
@@ -41,11 +52,16 @@ def recover(cohort: Cohort, max_papers: int = 80, run_one_baseline: bool = False
         "tokens_if_whole_papers": 0,
         "tier_counts": {"small": 0, "large": 0, "cached": 0},
         "baseline_measured": None,
+        "stopped_early": None,
         "recovered": [],
     }
 
     for trial in targets:
         if report["papers_read"] >= max_papers:
+            report["stopped_early"] = "paper limit ({})".format(max_papers)
+            break
+        if time.time() > deadline:
+            report["stopped_early"] = "time budget ({:.0f}s)".format(time_budget)
             break
         link = next((l for l in trial.links if l.pmid and avail.get(l.pmid, {}).get("full_text")), None)
         if link is None:
@@ -62,7 +78,8 @@ def recover(cohort: Cohort, max_papers: int = 80, run_one_baseline: bool = False
 
         try:
             result = extraction.extract_hazard_ratios(sentences, purpose="recover:{}".format(trial.trial.nct_id))
-        except (client.BudgetExceeded, client.LLMUnavailable):
+        except (client.BudgetExceeded, client.LLMUnavailable) as stop:
+            report["stopped_early"] = "model unavailable: {}".format(str(stop)[:60])
             break
         report["tokens_measured"] += result["tokens"]
         report["tokens_previously_spent"] += result.get("tokens_cached", 0)
