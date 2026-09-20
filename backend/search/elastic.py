@@ -59,6 +59,10 @@ TRIAL_MAPPING = {
         "investigators": _TEXT, "sponsor": _TEXT, "sponsor_class": _KW,
         "phases": _KW, "status": _KW, "enrollment": {"type": "integer"},
         "start_year": {"type": "integer"}, "linked_pmids": _KW,
+        # Publication-gap facets, so a search can answer "how many of this
+        # drug's completed trials have a paper?" directly from the index.
+        "has_publication": {"type": "boolean"}, "posted_hazard_ratio": {"type": "boolean"},
+        "cohort": _KW, "kind": _KW,
     }
 }
 WORK_MAPPING = {
@@ -66,20 +70,34 @@ WORK_MAPPING = {
         "pmid": _KW, "doi": _KW, "openalex_id": _KW, "title": _TEXT, "abstract": _TEXT,
         "journal": _TEXT, "authors": _TEXT, "year": {"type": "integer"},
         "nct_ids": _KW, "publication_types": _KW, "is_retracted": {"type": "boolean"},
+        "kind": _KW,
     }
 }
 
 
 def ensure_indices() -> None:
+    """Create the indices, or add any fields the mapping has gained since.
+
+    Adding a field to an existing mapping is allowed; changing one is not, and
+    the facets need their fields declared as keyword/boolean rather than left to
+    dynamic mapping, which would make them text and refuse to aggregate.
+    """
     es = client()
     for name, mapping in ((TRIALS, TRIAL_MAPPING), (WORKS, WORK_MAPPING)):
         if not es.indices.exists(index=name):
             es.indices.create(index=name, mappings=mapping)
+            continue
+        existing = es.indices.get_mapping(index=name)[name]["mappings"].get("properties", {})
+        missing = {k: v for k, v in mapping["properties"].items() if k not in existing}
+        if missing:
+            es.indices.put_mapping(index=name, properties=missing)
 
 
-def _trial_doc(trial: Trial, linked_pmids: Sequence[str] = ()) -> Dict[str, Any]:
+def _trial_doc(trial: Trial, linked_pmids: Sequence[str] = (), posted_hazard_ratio: Optional[bool] = None,
+               cohort: Optional[str] = None) -> Dict[str, Any]:
     return {
-        "_index": TRIALS, "_id": trial.nct_id,
+        "_index": TRIALS, "_id": trial.nct_id, "kind": "trial",
+        "has_publication": bool(linked_pmids), "posted_hazard_ratio": posted_hazard_ratio, "cohort": cohort,
         "nct_id": trial.nct_id, "title": trial.title, "official_title": trial.official_title,
         "summary": trial.brief_summary, "conditions": trial.conditions,
         "interventions": [i.get("name") for i in trial.interventions if i.get("name")],
@@ -94,7 +112,7 @@ def _trial_doc(trial: Trial, linked_pmids: Sequence[str] = ()) -> Dict[str, Any]
 
 def _work_doc(paper: Paper) -> Dict[str, Any]:
     return {
-        "_index": WORKS, "_id": paper.pmid or paper.doi or paper.openalex_id or paper.id,
+        "_index": WORKS, "_id": paper.pmid or paper.doi or paper.openalex_id or paper.id, "kind": "work",
         "pmid": paper.pmid, "doi": paper.doi, "openalex_id": paper.openalex_id,
         "title": paper.title, "abstract": paper.abstract, "journal": paper.journal,
         "authors": [a.name for a in paper.authors], "year": paper.publication_year,
@@ -119,6 +137,67 @@ def index_works(papers: Iterable[Paper]) -> int:
     return ok
 
 
+def index_cohort(cohort: Any, fetch_papers: bool = True) -> Dict[str, int]:
+    """Index a built cohort: its trials with their gap facets, and their papers.
+
+    Papers come from PubMed in batches of fifty; the HTTP cache means a cohort
+    that has already been linked costs no new requests.
+    """
+    from ..sources import pubmed
+
+    trials = []
+    links: Dict[str, Sequence[str]] = {}
+    posted: Dict[str, bool] = {}
+    for item in cohort.trials:
+        trials.append(item.trial)
+        links[item.trial.nct_id] = [l.pmid for l in item.links if l.pmid]
+        posted[item.trial.nct_id] = any(e.is_poolable for e in item.effects)
+    ensure_indices()
+    docs = [_trial_doc(t, links.get(t.nct_id, ()), posted.get(t.nct_id), cohort.condition) for t in trials]
+    ok_trials, _ = helpers.bulk(client(), docs, raise_on_error=False)
+    client().indices.refresh(index=TRIALS)
+
+    ok_works = 0
+    if fetch_papers:
+        pmids = sorted({p for ps in links.values() for p in ps})
+        papers = []
+        for start in range(0, len(pmids), 50):
+            try:
+                papers.extend(pubmed.get_papers_by_pmid(pmids[start:start + 50]))
+            except Exception:
+                continue
+        if papers:
+            ok_works = index_works(papers)
+    return {"trials": ok_trials, "works": ok_works}
+
+
+FACETS = {
+    "kind": {"terms": {"field": "kind"}},
+    "phases": {"terms": {"field": "phases", "size": 6}},
+    "sponsor_class": {"terms": {"field": "sponsor_class", "size": 6}},
+    "has_publication": {"terms": {"field": "has_publication"}},
+    "posted_hazard_ratio": {"terms": {"field": "posted_hazard_ratio"}},
+    "is_retracted": {"terms": {"field": "is_retracted"}},
+    "years": {"histogram": {"field": "year", "interval": 5, "min_doc_count": 1}},
+    "start_years": {"histogram": {"field": "start_year", "interval": 5, "min_doc_count": 1}},
+}
+
+
+def _facets(response: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """Flatten aggregation buckets to {facet: [{value, count}]}."""
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for name, agg in (response.get("aggregations") or {}).items():
+        buckets = []
+        for b in agg.get("buckets", []):
+            value = b.get("key_as_string", b.get("key"))
+            if isinstance(value, float) and value.is_integer():
+                value = int(value)
+            buckets.append({"value": value, "count": b.get("doc_count", 0)})
+        if buckets:
+            out[name] = buckets
+    return out
+
+
 def _hits(response: Dict[str, Any]) -> List[Dict[str, Any]]:
     out = []
     for hit in response.get("hits", {}).get("hits", []):
@@ -131,18 +210,45 @@ def _hits(response: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-def search(query: str, index: str = "{},{}".format(TRIALS, WORKS), size: int = 10) -> List[Dict[str, Any]]:
+def search(query: str, index: str = "{},{}".format(TRIALS, WORKS), size: int = 10,
+           kind: Optional[str] = None, filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Free-text search across trials and works, with highlighted matches."""
+    return search_with_facets(query, index=index, size=size, kind=kind, filters=filters)["hits"]
+
+
+def search_with_facets(query: str, index: str = "{},{}".format(TRIALS, WORKS), size: int = 10,
+                       kind: Optional[str] = None, filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Hits plus the facet counts over everything that matched, not only the page.
+
+    The facets are what turn a keyword search into an answer: "pembrolizumab"
+    returns not just twelve documents but how many matching trials have a
+    publication and how many posted a hazard ratio.
+    """
+    must: List[Dict[str, Any]] = [{"multi_match": {
+        "query": query, "type": "best_fields",
+        "fields": ["title^3", "official_title^2", "abstract", "summary", "conditions^2",
+                   "interventions^2", "outcomes", "investigators", "authors", "sponsor", "journal"],
+    }}]
+    filter_clauses: List[Dict[str, Any]] = []
+    if kind in ("trial", "work"):
+        filter_clauses.append({"term": {"kind": kind}})
+    for field, value in (filters or {}).items():
+        if value is None or value == "":
+            continue
+        filter_clauses.append({"term": {field: value}})
+    body_query: Dict[str, Any] = {"bool": {"must": must}}
+    if filter_clauses:
+        body_query["bool"]["filter"] = filter_clauses
     response = client().search(
-        index=index, size=size,
-        query={"multi_match": {
-            "query": query, "type": "best_fields",
-            "fields": ["title^3", "official_title^2", "abstract", "summary", "conditions^2",
-                       "interventions^2", "outcomes", "investigators", "authors", "sponsor", "journal"],
-        }},
+        index=index, size=size, query=body_query, aggs=FACETS, track_total_hits=True,
         highlight={"fields": {"title": {}, "abstract": {"fragment_size": 160}, "summary": {"fragment_size": 160}}},
     )
-    return _hits(response)
+    total = response.get("hits", {}).get("total", {})
+    return {
+        "hits": _hits(response),
+        "facets": _facets(response),
+        "total": total.get("value", 0) if isinstance(total, dict) else total,
+    }
 
 
 def candidates_for_trial(trial: Trial, size: int = 20, exclude_pmids: Sequence[str] = ()) -> List[Dict[str, Any]]:

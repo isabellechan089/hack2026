@@ -42,10 +42,14 @@ class FrontendBehaviourTests(unittest.TestCase):
                          "app.js threw: {}\n{}".format(self.state.get("THREW"), self.result.stderr))
         self.assertTrue(self.state, "driver produced no output: " + self.result.stderr)
 
-    def test_opens_in_reference_check_mode(self):
-        self.assertEqual(self.state["initial_mode"], "sources")
-        self.assertEqual(self.state["start_sourcepanel_visible"], "true")
+    def test_opens_on_the_hero_feature(self):
+        # The landing view is bias-aware design: it answers from a saved cohort
+        # in well under a second, so nothing is lost by starting there.
+        self.assertEqual(self.state["initial_mode"], "design")
+        self.assertEqual(self.state["start_designpanel_visible"], "true")
         self.assertEqual(self.state["start_workspace_hidden"], "true")
+        self.assertEqual(self.state["start_sourcepanel_hidden"], "true")
+        self.assertEqual(self.state["sources_mode_switch"], "true")
 
     def test_reference_check_renders_its_findings(self):
         for key in ("sources_rendered", "sources_has_flagcard",
@@ -83,6 +87,27 @@ class FrontendBehaviourTests(unittest.TestCase):
         for key in ("design_has_stackbar", "design_has_linkage_bars", "design_has_forest",
                     "design_has_meters", "design_has_backtest", "design_has_sensitivity"):
             self.assertEqual(self.state[key], "true", key)
+
+    def test_funnel_plot_and_small_study_test_render(self):
+        self.assertEqual(self.state["design_has_funnel"], "true")
+        self.assertEqual(self.state["design_funnel_has_points"], "true")
+        self.assertEqual(self.state["design_has_egger"], "true")
+        self.assertEqual(self.state["design_names_provenance"], "true")
+        # The fixture was captured with an event probability, so participants appear.
+        self.assertEqual(self.state["design_has_participants"], "true")
+
+    def test_overview_and_ledger_cards_fill_in(self):
+        self.assertEqual(self.state["design_has_lazy_cards"], "true")
+        self.assertEqual(self.state["overview_lists_cohorts"], "true")
+        self.assertEqual(self.state["overview_states_pattern"], "true")
+        self.assertEqual(self.state["ledger_shows_dollars"], "true")
+        self.assertEqual(self.state["ledger_shows_counterfactual"], "true")
+        self.assertEqual(self.state["ledger_has_purpose_bars"], "true")
+
+    def test_search_view_offers_facets_over_every_match(self):
+        self.assertEqual(self.state["search_has_facets"], "true")
+        self.assertEqual(self.state["search_facet_publication"], "true")
+        self.assertEqual(self.state["search_shows_total"], "true")
 
     def test_reviewer_view_shows_paths_and_their_evidence(self):
         self.assertEqual(self.state["reviewer_mode"], "true")
@@ -124,7 +149,8 @@ class FrontendBehaviourTests(unittest.TestCase):
         # A misspelled payload key surfaces as "undefined" in the markup rather
         # than as an exception, so it has to be asserted against directly.
         for key in ("design_no_undefined", "reviewer_no_undefined", "trial_no_undefined",
-                    "cascade_no_undefined", "search_no_undefined"):
+                    "cascade_no_undefined", "search_no_undefined", "overview_no_undefined",
+                    "ledger_no_undefined"):
             self.assertEqual(self.state[key], "true", key)
 
 

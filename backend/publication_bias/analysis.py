@@ -6,7 +6,7 @@ identical numbers from identical records.
 
 from typing import Any, Dict, Optional, Sequence
 
-from . import backtest, publication_model, sensitivity
+from . import backtest, funnel, publication_model, sensitivity
 from .cohort import Cohort, describe
 from .power import design_comparison
 from .priors import compare_priors
@@ -48,6 +48,7 @@ def analyze(
         "linkage": publication_model.linkage_rates(cohort),
         "publication_model": publication_model.fit_publication_model(cohort).to_dict(),
         "priors": priors,
+        "funnel": funnel.funnel(cohort),
         "design": design_comparison(
             assumed_hr=assumed_hr,
             literature_hr=literature_hr,

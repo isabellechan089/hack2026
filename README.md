@@ -57,6 +57,48 @@ literature-only model systematically predicts a stronger effect than held-out
 trials actually delivered, while the registry-aware model is close to unbiased.
 That direction is exactly what publication selection predicts.
 
+### Where the missing trials sit
+
+A funnel plot puts every trial at its effect and its precision. Publication
+selection hollows out one corner: small trials with unimpressive results.
+Egger's regression test measures that asymmetry.
+
+```
+  EGGER'S TEST            TRIALS      INTERCEPT          P
+  Literature-only             65   -2.36 ± 0.31     <0.001
+  Registry-aware              86   -1.87 ± 0.27     <0.001
+
+  17 of the 21 registry-only trials are less precise than the median
+  published trial, and 17 report a weaker effect than the pooled estimate.
+```
+
+The registry-only trials land in exactly the corner the literature is missing,
+and adding them back moves the intercept toward zero. It does not reach zero:
+the registry itself is incomplete, and small-study effects have other causes.
+
+### Does it repeat in other disease areas?
+
+Ten cohorts, five disease areas, the same pipeline (`/api/overview`):
+
+```
+  COHORT                      LINKED · SIGNIFICANT   LINKED · NOT SIG.   HR LITERATURE → REGISTRY
+  breast cancer          OS        100%  (n=8)          94%  (n=32)        0.891 → 0.886
+  breast cancer          PFS        96%  (n=26)         77%  (n=26)        0.755 → 0.771
+  colorectal cancer      OS        100%  (n=14)         73%  (n=30)        0.878 → 0.890
+  colorectal cancer      PFS        95%  (n=19)         66%  (n=35)        0.802 → 0.845
+  melanoma               OS        100%  (n=12)         82%  (n=28)        0.812 → 0.828
+  melanoma               PFS        92%  (n=25)         68%  (n=19)        0.702 → 0.712
+  NSCLC                  OS        100%  (n=14)         75%  (n=59)        0.905 → 0.918
+  NSCLC                  PFS        93%  (n=41)         60%  (n=45)        0.761 → 0.801
+  prostate cancer        OS        100%  (n=10)         86%  (n=28)        0.927 → 0.935
+  prostate cancer        PFS        95%  (n=21)         78%  (n=18)        0.728 → 0.757
+```
+
+In all ten, statistically significant trials were more likely to be linked to
+a publication. In nine of ten, adding the registry-only trials moved the pooled
+hazard ratio toward the null. The counts are descriptive; they say how often
+the direction repeated, not that it must.
+
 ---
 
 ## Run
@@ -72,14 +114,25 @@ venv/bin/python -m pip install -r requirements.txt
 venv/bin/python main.py       # then open http://127.0.0.1:8000
 ```
 
-Five views over one evidence graph, grouped the way the product is:
+Or in a container, with no local Python at all:
+
+```sh
+docker build -t trialtrace . && docker run --rm -p 8000:8000 --env-file .env trialtrace
+```
+
+Six views over one evidence graph, grouped the way the product is. The app
+opens on the hero feature, which answers from a saved cohort in well under a
+second.
 
 **Clinical design** — *Bias-aware design* runs the whole publication-bias
 pipeline in the browser: the A/B/C composition of the cohort, linkage rates by
 result direction and significance, the two pooled priors as a forest plot, the
-power your design actually delivers, the sensitivity sweep, and the back-test.
-Any disease area works: a saved cohort answers in under a second, and a new one
-builds live in about ten seconds. *Trial ↔ paper* takes a registry identifier and shows which publication
+funnel plot with Egger's test, the power your design actually delivers (and the
+participant count, if you give an event probability), the sensitivity sweep,
+the back-test, the same numbers for every other saved cohort, and what the
+model layer cost in dollars. Any disease area works: a saved cohort answers in
+under a second, and a new one builds live in about ten seconds and is kept.
+*Trial ↔ paper* takes a registry identifier and shows which publication
 actually reports the trial, with the field-by-field comparison.
 
 **Research integrity** — *Check my sources* screens a paper's whole reference
@@ -88,8 +141,11 @@ re-rooting on any node. *Reviewer conflicts* returns exact coauthorship paths
 with the shared works behind each step.
 
 **Evidence index** — free-text search over every indexed trial and paper
-(Elasticsearch), the same retrieval that proposes candidates when a trial has
-no identifier link.
+(Elasticsearch, 1,895 trials and 2,586 papers across five disease areas), the
+same retrieval that proposes candidates when a trial has no identifier link.
+Facets are aggregations over every match, not the page shown: search a drug and
+read off how many of its completed trials have a publication, how many posted a
+hazard ratio, and their phases and sponsors. Click a facet to filter.
 
 ### The same analysis from the command line
 
@@ -133,10 +189,13 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-112 tests, all offline. The statistics are checked against closed-form values
-(Schoenfeld event counts, DerSimonian-Laird pooling) and against synthetic data
-with a known answer, so a regression in the maths fails a test rather than
-producing a plausible-looking number.
+132 tests, all offline. The statistics are checked against closed-form values
+(Schoenfeld event counts, DerSimonian-Laird pooling, the Egger regression) and
+against synthetic data with a known answer, so a regression in the maths fails
+a test rather than producing a plausible-looking number. The interface is
+tested by executing it: the page scripts run in a DOM stub, every view is
+driven the way a user would, and the markup is checked for what it must show
+and for what it must never show.
 
 ---
 
@@ -264,10 +323,11 @@ venv/bin/python main.py
 | `GET /api/cohort?condition=&endpoint=` | Cohort composition and linkage counts |
 | `POST /api/reviewer-conflict` | Conflict paths with evidence |
 | `GET /api/cohorts` | Which cohorts are saved and analyse instantly |
+| `GET /api/overview` | Every saved cohort through the same pipeline, with the cross-cohort pattern |
 | `GET /api/design?…&recover=1` | The same report, with hazard ratios recovered from open full text |
 | `GET /api/candidates?nct=` | The fuzzy cascade for one trial: retrieved, scored, adjudicated |
-| `GET /api/search?q=` | Free-text search over the Elasticsearch index |
-| `GET /api/llm-ledger` | Every model call made, with token counts by purpose |
+| `GET /api/search?q=&kind=trial\|work&has_publication=&phases=&sponsor_class=` | Faceted search over the Elasticsearch index |
+| `GET /api/llm-ledger` | Every model call made: tokens and dollars by purpose, cache hits, budget |
 | `GET /api/sources?doi=&deep=1` | Screen a paper's whole reference list for retractions |
 | `GET /api/graph?doi=&depth=1\|2&limit=` | Citation graph, retraction evidence, blast radius |
 | `GET /api/demo` · `/api/demo-sources` | Bundled snapshots, for offline demos |
@@ -299,22 +359,25 @@ backend/
                       power.py          step 9   Schoenfeld design consequence
                       sensitivity.py    step 10  unknown-result sweep
                       backtest.py       section 4  leave-one-out validation
+                      funnel.py         funnel plot, Egger's test, placement
+                      overview.py       every saved cohort, cached by mtime
                       analysis.py       orchestrator
   graph/              coauthors.py, reviewer_conflicts.py
-  search/elastic.py   index + retrieval: candidate generation, cohort search
+  search/elastic.py   index + retrieval: candidate generation, faceted search
   llm/                client.py (cache, ledger, budget cap), extraction.py, matching.py
   publication_bias/fulltext.py   recover estimates from Europe PMC full text
   config.py           loads .env; accepts a Cloud ID or an endpoint URL
   render.py           terminal report
 cli.py                design | cohort | reviewer | trial | paper | compare
-static/charts.js      inline-SVG chart primitives
+static/charts.js      inline-SVG chart primitives (bars, forest, funnel, meter, line)
 static/views.js       design, reviewer and trial-comparison views
 main.py               HTTP server + static UI
 graph.py              citation graph, exposure BFS, blast_radius
 retraction_check.py   screen a paper's own reference list
 static/               SVG citation graph UI
 data/cohorts/         saved cohorts      data/demo.json  saved graph snapshot
-tests/                63 offline tests
+Dockerfile            python:3.11-slim, no build step
+tests/                132 offline tests, including the executed frontend
 ```
 
 ---
@@ -324,8 +387,9 @@ tests/                63 offline tests
 Stated plainly so the gaps are not mistaken for claims:
 
 - **The index holds the analysed cohorts, not the literature.** Elasticsearch
-  is populated from the cohorts you build (400 trials, ~600 papers for lung
-  cancer). A trial's true paper is only findable by the cascade if it is in the
+  is populated from the cohorts that have been built (1,895 trials and 2,586
+  papers across five disease areas, and every new cohort is indexed as it is
+  built). A trial's true paper is only findable by the cascade if it is in the
   index, so candidate search currently mainly *prevents* false links.
 - **Full-text recovery is bounded by open access.** 43% of the eligible papers
   had open full text and just under half of those parsed; recovery reached 5 of
@@ -341,6 +405,11 @@ Stated plainly so the gaps are not mistaken for claims:
   channels run there, which is conservative: it may under-count publications and
   therefore over-state the gap. Turning it on is a one-line change once its
   false-positive rate has been measured.
-- **Category C dominates this cohort** (316 of 400). Most completed trials post
-  no analyzable hazard ratio at all, which limits how much the observable A-vs-B
-  comparison can carry.
+- **Category C dominates every cohort** (314 of 400 for lung cancer, and more
+  elsewhere). Most completed trials post no analyzable hazard ratio at all,
+  which limits how much the observable A-vs-B comparison can carry.
+- **Funnel asymmetry is not proof of selection.** Egger's test detects
+  small-study effects, which have other causes; the tool says so on screen.
+  Below ten trials the test is shown but labelled unreliable.
+- **Model prices are list prices**, entered as data. If they change, the token
+  counts remain exact and the dollar figures need one table updated.

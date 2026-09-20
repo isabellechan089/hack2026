@@ -99,3 +99,22 @@ svg.chart g:hover rect,svg.chart g:hover circle{filter:brightness(.88)}
 .hl{display:block;font-size:10px;color:var(--muted);margin-top:4px}
 .hl em{font-style:normal;background:#fbf1de;color:#6f5514;padding:0 2px;border-radius:2px}
 .datatable td i{color:var(--muted);font-style:normal;font-size:10px;letter-spacing:.4px}
+
+/* --- funnel, facets, overview, ledger ------------------------------------ */
+.funnelgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;align-items:start}
+.chart.funnel{height:auto;aspect-ratio:100/64}
+.provenance{margin:-8px 0 14px}
+.facets{display:flex;flex-wrap:wrap;gap:8px 22px;padding:14px 16px;margin-bottom:14px;background:#fff;border:1px solid var(--line);border-radius:9px}
+.facetgroup{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.facetgroup .eyebrow{margin-right:4px}
+.facet{border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:11px;background:#fafbf7;color:var(--ink)}
+.facet b{font-family:Manrope,sans-serif;font-size:11px;color:var(--muted);margin-left:3px}
+.facet.active{background:var(--green);color:#f2f6ec;border-color:var(--green)}
+.facet.active b{color:#d9e6cf}
+.facet.clear{background:transparent;text-decoration:underline;text-underline-offset:3px;border:0}
+.linklike{text-decoration:underline;text-underline-offset:3px;padding:0;font:inherit;text-align:left}
+.ledgerstats{margin:6px 0 18px}
+.ledgerstats .stat b{font-size:22px}
+.ledgerstats .stat:nth-child(2) b,.ledgerstats .stat:nth-child(3) b,.ledgerstats .stat:nth-child(4) b{color:var(--ink)}
+.ledgerstats .stat:nth-child(1) b{color:var(--viz-direct)}
+@media(max-width:900px){.funnelgrid{grid-template-columns:1fr}.ledgerstats{grid-template-columns:1fr 1fr}}

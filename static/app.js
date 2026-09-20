@@ -1,7 +1,9 @@
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data,selected,zoom=1,offset={x:0,y:0},view='graph',busy=false,mode='sources',sources,design,reviewer,trial,searchResult,candidates;
+let data,selected,zoom=1,offset={x:0,y:0},view='graph',busy=false,mode='sources',sources,design,reviewer,trial,searchResult,candidates,overview,ledger;
 const colors={retracted:'#b3392f',direct:'#d9722c',indirect:'#4a7fb5',none:'#93a49a'};
-const VIZ={accent:'#d9722c',context:'#8d9d94',good:'#3f7d54',ink:'#213b38',muted:'#75827c',surface:'#ffffff',grid:'#e7ebe4'};
+// accent/published are the one validated categorical pair (deltaE 19.8 protan, 26.0 normal, --pairs all);
+// context is the neutral 'other' slot and good is a status colour, both always paired with a label.
+const VIZ={accent:'#d9722c',published:'#4a7fb5',context:'#8d9d94',good:'#3f7d54',ink:'#213b38',muted:'#75827c',surface:'#ffffff',grid:'#e7ebe4'};
 const statuses={retracted:'Retraction notice found',updated:'Update notice found',no_notice_found:'No notice found',screened:'Screened, not flagged',unknown:'Status unknown'};
 const names={retracted:'Retracted paper',direct:'Direct citation connection',indirect:'Indirect citation connection',none:'No retraction path in sample'};
 function message(text,error=false){$('#notice').textContent=text;$('#notice').className=error?'error':''}
@@ -40,6 +42,8 @@ const MODES={
    hint:'Keyword retrieval over the Elasticsearch index that feeds fuzzy matching',
    has:()=>!!searchResult,seed:()=>runSearch()},
 };
+// The hero feature is the landing view: a saved cohort answers in well under a second.
+const LANDING='design';
 const PANELS=['sourcepanel','workspace','designpanel','reviewerpanel','trialpanel','searchpanel'];
 const LINES=['lineDoi','lineDesign','lineReviewer','lineTrial','lineSearch'];
 
@@ -93,7 +97,7 @@ $('#method').onclick=()=>{$('#methodology').open=true;$('#methodology').scrollIn
 let step=0;const steps=[
  ['Start with a paper you rely on','This is a real Nature Reviews Clinical Oncology review. We read all 182 works it cites and checked every one for a retraction notice.'],
  ['One of its sources was retracted','The flagged reference was retracted in April 2023, confirmed by both Retraction Watch and the publisher. The notice is linked, so you can verify it yourself.'],
- ['Now ask how far that spread','Switching to the citation view, centred on the retracted paper. Red is the retracted work, orange cites it directly, yellow connects through another paper.'],
+ ['Now ask how far that spread','Switching to the citation view, centred on the retracted paper. Red is the retracted work, orange cites it directly, blue connects through another paper.'],
  ['Timing is the part people miss','Most of the papers connected to this retraction were published after the notice appeared. That is a fact about dates, not an accusation about the authors.'],
  ['Keep pulling the thread','Select any paper to see its shortest path back to the retraction, make it the new starting point, or check its own reference list. Saved mode works with no network at all.'],
 ];
@@ -106,4 +110,4 @@ async function showStep(){$('#stepnumber').textContent='GUIDED DEMO · '+(step+1
 $('#tour').onclick=async()=>{step=0;$('#filter').value='all';$('#find').value='';setView('graph');await showStep();$('#tourdialog').showModal()};
 $('#closetour').onclick=()=>$('#tourdialog').close();
 $('#nextstep').onclick=async()=>{if(step===steps.length-1){$('#tourdialog').close();return}step++;await showStep()};
-setMode('sources');
+setMode(LANDING);

@@ -2,6 +2,7 @@
 import json
 import os
 import argparse
+import threading
 from pathlib import Path
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -10,7 +11,8 @@ from api_client import normalize_doi
 from retraction_check import check_sources
 from backend.report import comparison_report, paper_report, trial_report
 from backend.publication_bias.analysis import analyze
-from backend.publication_bias.cohort import available_cohorts, cohort_path, describe, load_or_build
+from backend.publication_bias.cohort import available_cohorts, cohort_path, describe, load_or_build, save_cohort
+from backend.publication_bias.overview import overview
 from backend.graph.reviewer_conflicts import find_conflicts, resolve_author
 from backend.sources.clinical_trials import looks_like_nct_id
 from backend.sources.http import SourceError
@@ -18,6 +20,26 @@ from backend.matching.trial_paper_matcher import find_publications_fuzzy
 from backend.search import elastic
 from backend.llm import client as llm_client
 ROOT = Path(__file__).parent
+
+
+def _index_in_background(cohort):
+    """Push a freshly built cohort into Elasticsearch without holding the response.
+
+    Indexing is idempotent (documents are keyed by NCT id and PMID), so a cohort
+    built twice is simply overwritten. When Elastic is not configured this is a
+    no-op, and a failure is logged rather than surfaced: search is a
+    convenience over the analysis, never a precondition for it.
+    """
+    def work():
+        try:
+            counts = elastic.index_cohort(cohort)
+            print('indexed {} trials and {} papers for "{}"'.format(
+                counts['trials'], counts['works'], cohort.condition), flush=True)
+        except Exception as error:  # noqa: BLE001 - background, best effort
+            print('indexing skipped: {}'.format(str(error)[:120]), flush=True)
+    threading.Thread(target=work, daemon=True).start()
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT / 'static'), **kwargs)
@@ -65,9 +87,23 @@ class Handler(SimpleHTTPRequestHandler):
             q = (query.get('q', [''])[0] or '').strip()
             if not q:
                 return self.reply({'error': 'Enter a search term.'}, 400)
+            kind = query.get('kind', [''])[0]
+            filters = {}
+            for name in ('phases', 'sponsor_class', 'cohort'):
+                if query.get(name, [''])[0]:
+                    filters[name] = query[name][0]
+            for name in ('has_publication', 'posted_hazard_ratio', 'is_retracted'):
+                value = query.get(name, [''])[0]
+                if value in ('true', 'false'):
+                    filters[name] = value == 'true'
             try:
-                return self.reply({'query': q, 'hits': elastic.search(q, size=int(query.get('size', ['12'])[0])),
-                                   'index': elastic.stats()})
+                result = elastic.search_with_facets(
+                    q, size=max(1, min(50, int(query.get('size', ['12'])[0]))),
+                    kind=kind if kind in ('trial', 'work') else None, filters=filters)
+                result.update({'query': q, 'kind': kind or 'all', 'filters': filters, 'index': elastic.stats()})
+                return self.reply(result)
+            except ValueError as error:
+                return self.reply({'error': str(error)}, 400)
             except Exception:
                 return self.reply({'error': 'Search is not available. Check the Elasticsearch settings in .env.'}, 502)
         if parsed.path == '/api/candidates':
@@ -90,16 +126,14 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 return self.reply({'error': 'Candidate search could not be completed.'}, 502)
         if parsed.path == '/api/llm-ledger':
-            rows = llm_client.ledger()
-            by = {}
-            for r in rows:
-                key = r.get('purpose', '').split(':')[0] or 'other'
-                b = by.setdefault(key, {'calls': 0, 'prompt_tokens': 0, 'completion_tokens': 0})
-                b['calls'] += 1; b['prompt_tokens'] += r.get('prompt_tokens', 0); b['completion_tokens'] += r.get('completion_tokens', 0)
-            return self.reply({'calls': len(rows), 'by_purpose': by,
-                               'total_tokens': sum(r.get('prompt_tokens', 0) + r.get('completion_tokens', 0) for r in rows)})
+            return self.reply(llm_client.summary())
         if parsed.path == '/api/cohorts':
             return self.reply({'cohorts': available_cohorts()})
+        if parsed.path == '/api/overview':
+            try:
+                return self.reply(overview())
+            except Exception:
+                return self.reply({'error': 'The saved cohorts could not be summarised.'}, 502)
         if parsed.path in ('/api/design', '/api/cohort'):
             query = parse_qs(parsed.query)
             try:
@@ -112,6 +146,7 @@ class Handler(SimpleHTTPRequestHandler):
                 # A saved cohort answers instantly; anything else is built live,
                 # which batched linkage brings down to roughly ten seconds.
                 rebuild = query.get('rebuild', [''])[0] == '1'
+                was_saved = os.path.exists(cohort_path(condition, endpoint)) and not rebuild
                 cohort = load_or_build(
                     condition,
                     endpoint_class=endpoint,
@@ -123,6 +158,15 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError(
                         'No completed trials with posted results found for "{}". Try a '
                         'broader disease term.'.format(condition))
+                if not was_saved:
+                    # A cohort built live is kept, so the next request answers
+                    # instantly and the overview can include it; the same
+                    # records go to the search index in the background.
+                    try:
+                        save_cohort(cohort)
+                    except OSError:
+                        pass
+                    _index_in_background(cohort)
                 if parsed.path == '/api/cohort':
                     return self.reply(describe(cohort))
                 return self.reply(analyze(
@@ -210,6 +254,8 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8000)
+    parser.add_argument('--host', default='127.0.0.1',
+                        help='bind address; 0.0.0.0 inside a container or for a LAN demo')
     args = parser.parse_args()
-    print(f'Evidence Atlas → http://127.0.0.1:{args.port}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+    print(f'Evidence Atlas → http://{args.host}:{args.port}', flush=True)
+    ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()

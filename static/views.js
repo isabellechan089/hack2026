@@ -1,5 +1,6 @@
-// The three views that are not about citations: bias-aware trial design,
-// reviewer conflicts, and the registered-versus-published comparison.
+// The views that are not about citations: bias-aware trial design (with its
+// funnel plot, cross-cohort overview and cost ledger), reviewer conflicts, the
+// registered-versus-published comparison, the fuzzy cascade and index search.
 
 async function callJSON(url, options) {
   const response = await fetch(url, options);
@@ -22,9 +23,10 @@ async function listCohorts() {
   try {
     const payload = await callJSON('/api/cohorts');
     if (!payload.cohorts.length) return;
-    $('#searchsources').textContent = 'Any disease area works; a new cohort takes about ten seconds. '
-      + 'Instant from cache: ' + payload.cohorts
-        .map(c => `${c.condition} (${c.endpoint_class.toUpperCase()})`).join(' · ');
+    const byCondition = {};
+    payload.cohorts.forEach(c => { (byCondition[c.condition] = byCondition[c.condition] || []).push(c.endpoint_class.toUpperCase()); });
+    $('#searchsources').textContent = 'Any disease area works; a new cohort builds in about ten seconds and is kept. '
+      + 'Instant now: ' + Object.entries(byCondition).map(([k, v]) => `${k} (${v.join(', ')})`).join(' · ');
   } catch (e) { /* the hint is a convenience; its absence is not an error */ }
 }
 
@@ -33,12 +35,18 @@ async function runDesign() {
   try {
     const recover = $('#recover').checked;
     if (recover) message('Building the cohort, then reading open full text for trials with no posted estimate. This can take a minute…');
-    design = await callJSON('/api/design?' + new URLSearchParams({
+    const params = {
       condition: $('#condition').value, endpoint: $('#endpoint').value,
       hr: $('#hr').value, power: $('#power').value, alpha: $('#alpha').value,
       recover: recover ? '1' : '0',
-    }));
+    };
+    const eventProbability = parseFloat($('#eventprob').value);
+    if (Number.isFinite(eventProbability) && eventProbability > 0 && eventProbability <= 1) params.event_probability = eventProbability;
+    design = await callJSON('/api/design?' + new URLSearchParams(params));
     renderDesign(); message(''); listCohorts();
+    // Two cards that depend on other endpoints fill in after the analysis, so
+    // the analysis never waits on the ledger or on the other saved cohorts.
+    loadOverview(); loadLedger();
   } catch (e) { message(e.message, true); }
   finally { release('rundesign'); }
 }
@@ -47,6 +55,8 @@ function renderDesign() {
   const d = design, c = d.cohort, cat = c.categories, p = d.priors, lit = p.literature_only, reg = p.registry_aware;
   const rows = d.design.rows, con = d.design.consequence, back = d.backtest, sens = d.sensitivity;
   const sig = d.linkage.by_significance, dir = d.linkage.by_direction;
+  const src = c.sources || {}, fun = d.funnel || {}, egger = fun.egger || {};
+  const withParticipants = rows.some(r => r.required_participants);
 
   const linkRows = sig && sig.significant ? [
     {label: 'Statistically significant', value: sig.significant.linkage_rate, display: CH.pct(sig.significant.linkage_rate), note: `${sig.significant.n} trials`, color: VIZ.accent},
@@ -57,12 +67,13 @@ function renderDesign() {
 
   $('#designpanel').innerHTML = `
 <div class="sectionhead"><div><span class="eyebrow">BIAS-AWARE TRIAL DESIGN</span><h2>${CH.esc(c.condition)} · ${CH.esc(c.endpoint_class.toUpperCase())} · phase ${CH.esc(c.phases.join('/'))}</h2></div><div class="sourcepill">● ${CH.int(c.trials)} completed registered trials with posted results</div></div>
+${src.registry_trials ? `<p class="rownote provenance">Sources · ${CH.int(src.registry_trials)} registrations from ClinicalTrials.gov · ${CH.int(src.publications_linked)} publications via PubMed · ${CH.int(src.openalex_resolved)} resolved in the OpenAlex graph${src.retracted_publications ? ` · ${CH.int(src.retracted_publications)} carry a retraction flag` : ' · none flagged as retracted'}</p>` : ''}
 
 <div class="vizgrid">
   <section class="vizcard"><h3>1 · What the literature is missing</h3>
     <p class="vizsub">Completed trials, grouped by whether their results are findable in the published record.</p>
     ${stackbar([
-      {label: 'Published, with a result', value: cat.A_published_with_result, color: VIZ.good},
+      {label: 'Published, with a result', value: cat.A_published_with_result, color: VIZ.published},
       {label: 'Registry result, no publication found', value: cat.B_registry_only_with_result, color: VIZ.accent, note: 'the observable gap'},
       {label: 'No usable effect estimate', value: cat.C_no_usable_result, color: VIZ.context, note: 'sensitivity analysis only'},
     ], {title: 'trial categories'})}
@@ -79,19 +90,37 @@ function renderDesign() {
 <section class="vizcard"><h3>3 · Two priors from the same cohort</h3>
   <p class="vizsub">Pooled hazard ratio, random effects. Adding registry-only results is the correction.</p>
   ${forest([
-    {label: 'Literature-only', value: lit.hazard_ratio, lo: lit.ci_lower, hi: lit.ci_upper, k: lit.k, color: VIZ.context, sub: `${lit.k} trials`},
+    {label: 'Literature-only', value: lit.hazard_ratio, lo: lit.ci_lower, hi: lit.ci_upper, k: lit.k, color: VIZ.published, sub: `${lit.k} trials`},
     {label: 'Registry-aware', value: reg.hazard_ratio, lo: reg.ci_lower, hi: reg.ci_upper, k: reg.k, color: VIZ.accent, sub: `${reg.k} trials`},
   ], {title: 'pooled hazard ratio'})}
   <p class="viznote">${CH.esc(p.interpretation)}</p>
   <p class="rownote">${CH.esc(p.caveat)}</p>
 </section>
 
-<section class="vizcard"><h3>4 · What that does to your design</h3>
-  <p class="vizsub">alpha ${CH.esc(d.design.alpha)} · target power ${CH.pct(d.design.target_power)} · Schoenfeld, 1:1 allocation.</p>
-  <table class="datatable"><thead><tr><th>Basis</th><th>HR</th><th>Events needed</th><th>Power delivered</th></tr></thead><tbody>
+<section class="vizcard"><h3>4 · Where the missing trials sit</h3>
+  <p class="vizsub">Each trial by its effect and its precision. Publication selection hollows out one corner: small trials with unimpressive results. The registry-only trials should land there.</p>
+  <div class="funnelgrid">
+    <div>${funnelplot(fun, {title: 'funnel plot'})}</div>
+    <div>
+      <table class="datatable"><thead><tr><th>Egger's test</th><th>Trials</th><th>Intercept</th><th>p</th></tr></thead><tbody>
+      ${[['literature_only', 'Literature-only', VIZ.published], ['registry_aware', 'Registry-aware', VIZ.accent]].map(([k, label, color]) => {
+        const e = egger[k] || {};
+        return `<tr><td><span class="chip" style="background:${color};display:inline-block;margin-right:7px"></span>${label}</td><td>${CH.int(e.k)}</td><td>${e.ran ? (e.intercept > 0 ? '+' : '') + CH.num(e.intercept) + ' ± ' + CH.num(e.intercept_se) : '--'}</td><td>${e.ran ? (e.p_value < 0.001 ? '<0.001' : CH.num(e.p_value, 3)) : '--'}</td></tr>`;
+      }).join('')}</tbody></table>
+      ${egger.literature_only && egger.literature_only.note ? `<p class="viznote">${CH.esc(egger.literature_only.note)}${egger.registry_aware && egger.registry_aware.ran ? ` Adding the registry-only trials moves the intercept from ${CH.num(egger.literature_only.intercept)} to ${CH.num(egger.registry_aware.intercept)}.` : ''}</p>` : ''}
+      ${fun.placement ? `<p class="rownote">${CH.esc(fun.placement.note)}</p>` : ''}
+    </div>
+  </div>
+  <p class="rownote">${CH.esc(fun.note || '')}</p>
+</section>
+
+<section class="vizcard"><h3>5 · What that does to your design</h3>
+  <p class="vizsub">alpha ${CH.esc(d.design.alpha)} · target power ${CH.pct(d.design.target_power)} · Schoenfeld, 1:1 allocation${withParticipants ? ` · event probability ${CH.num(d.design.event_probability)}` : ''}.</p>
+  <table class="datatable"><thead><tr><th>Basis</th><th>HR</th><th>Events needed</th>${withParticipants ? '<th>Participants</th>' : ''}<th>Power delivered</th></tr></thead><tbody>
   ${rows.map(r => `<tr${r.label === 'Registry-aware estimate' ? ' class="highlight"' : ''}><td>${CH.esc(r.label)}</td>
     <td>${r.hazard_ratio === r.hazard_ratio ? CH.num(r.hazard_ratio) : '--'}</td>
     <td>${r.required_events ? CH.int(r.required_events) : '<span class="rownote">not feasible</span>'}</td>
+    ${withParticipants ? `<td>${r.required_participants ? CH.int(r.required_participants) : '--'}</td>` : ''}
     <td>${r.power_at_planned_events != null ? CH.pct(r.power_at_planned_events) : '--'}</td></tr>`).join('')}
   </tbody></table>
   ${con ? `<div class="meterrow">
@@ -101,7 +130,7 @@ function renderDesign() {
 </section>
 
 <div class="vizgrid">
-  <section class="vizcard"><h3>5 · If the unknown trials were known</h3>
+  <section class="vizcard"><h3>6 · If the unknown trials were known</h3>
     <p class="vizsub">${CH.int(sens.unknown_trials)} trials have neither a publication nor a posted result. Their effect is assumed, not imputed.</p>
     ${sens.points && sens.points.length ? linechart(
       sens.points.map(pt => ({y: pt.pooled_hazard_ratio,
@@ -110,7 +139,7 @@ function renderDesign() {
     <p class="rownote">${CH.esc(sens.note || '')}</p>
   </section>
 
-  <section class="vizcard"><h3>6 · Does the correction actually help?</h3>
+  <section class="vizcard"><h3>7 · Does the correction actually help?</h3>
     ${back.ran ? `<p class="vizsub">Leave-one-out over ${back.n} trials, ${CH.pct(back.level)} prediction interval.</p>
     <table class="datatable"><thead><tr><th>Model</th><th>Coverage</th><th>MAE log(HR)</th><th>Bias</th></tr></thead><tbody>
     ${[['literature_only', 'Literature-only'], ['registry_aware', 'Registry-aware']].map(([k, label]) => {
@@ -121,7 +150,11 @@ function renderDesign() {
   </section>
 </div>
 
+<section class="vizcard" id="overviewcard"><h3>8 · Does it repeat in other disease areas?</h3><p class="vizsub">Loading the other saved cohorts…</p></section>
+
 ${recoveryPanel(d)}
+
+<section class="vizcard" id="ledgercard"><h3>10 · What the model layer cost</h3><p class="vizsub">Loading the ledger…</p></section>
 
 <details class="methods"><summary>How these numbers were produced</summary>
   ${d.guardrails.map(g => `<p>· ${CH.esc(g)}</p>`).join('')}
@@ -132,9 +165,9 @@ ${recoveryPanel(d)}
 function recoveryPanel(d) {
   const r = d.recovery, src = d.evidence_sources || {};
   const sourcing = `<p class="rownote">Pooled estimates by source: ${CH.int(src.registry_posted)} posted in the registry · ${CH.int(src.publication_extracted)} extracted from open full text.</p>`;
-  if (!r) return `<section class="vizcard"><h3>7 · Reading the papers the registry left out</h3>
+  if (!r) return `<section class="vizcard"><h3>9 · Reading the papers the registry left out</h3>
     <p class="vizsub">Most trials without a usable estimate do have a publication. Tick <b>Read open full text</b> to recover hazard ratios from Europe PMC, with a small model reading only the sentences that could carry one.</p>${sourcing}</section>`;
-  return `<section class="vizcard"><h3>7 · Reading the papers the registry left out</h3>
+  return `<section class="vizcard"><h3>9 · Reading the papers the registry left out</h3>
   <p class="vizsub">${CH.int(r.candidates)} trials had a publication but no usable estimate · ${CH.int(r.with_full_text)} had open full text · ${CH.int(r.papers_read)} read · ${CH.int(r.trials_recovered)} recovered for this endpoint${r.trials_recovered_other_endpoint ? `, ${CH.int(r.trials_recovered_other_endpoint)} for the other` : ''}.</p>
   ${sourcing}
   <div class="vizgrid">
@@ -148,6 +181,56 @@ function recoveryPanel(d) {
   </tbody></table>` : ''}
   <p class="rownote">Every extracted value was checked against the sentence it came from before being kept: the ratio must be positive, the interval must bracket it, and the quoted evidence must appear in the text. Recovered trials join the published arm by construction; the registry-only arm cannot be rescued from the literature.</p>
 </section>`;
+}
+
+// --- Across disease areas -----------------------------------------------------
+
+async function loadOverview() {
+  try { overview = await callJSON('/api/overview'); renderOverview(); }
+  catch (e) { const el = $('#overviewcard'); if (el) el.innerHTML = `<h3>8 · Does it repeat in other disease areas?</h3><p class="empty">${CH.esc(e.message)}</p>`; }
+}
+
+function renderOverview() {
+  const el = $('#overviewcard'); if (!el || !overview) return;
+  const rows = overview.cohorts || [], pat = overview.pattern || {};
+  const current = design && design.cohort ? `${design.cohort.condition}|${design.cohort.endpoint_class}` : '';
+  const fmtHR = b => b && b.hazard_ratio ? CH.num(b.hazard_ratio) : '--';
+  el.innerHTML = `<h3>8 · Does it repeat in other disease areas?</h3>
+  <p class="vizsub">Every saved cohort, run through the same pipeline. Significant trials were linked to a publication more often in ${CH.int(pat.significant_linked_more_often_in)} of ${CH.int(pat.cohorts_compared)} cohorts; adding registry-only trials moved the prior toward the null in ${CH.int(pat.prior_moved_toward_null_in)} of ${CH.int(pat.cohorts_with_registry_only_trials)}.</p>
+  ${rows.length ? `<table class="datatable"><thead><tr><th>Cohort</th><th>Trials</th><th>Linked · significant</th><th>Linked · not sig.</th><th>HR literature → registry</th><th>Egger intercept</th></tr></thead><tbody>
+  ${rows.map(r => { const l = r.linkage || {}, sg = l.significant || {}, ns = l.not_significant || {}, e = (r.egger || {}).literature_only || {};
+    const isCurrent = `${r.condition}|${r.endpoint_class}` === current;
+    return `<tr${isCurrent ? ' class="highlight"' : ''}><td><button class="linklike" data-cohort="${CH.esc(r.condition)}" data-endpoint="${CH.esc(r.endpoint_class)}">${CH.esc(r.condition)}</button> <span class="rownote">${CH.esc((r.endpoint_class || '').toUpperCase())}</span></td><td>${CH.int(r.trials)}</td><td>${sg.n ? `${CH.pct(sg.linkage_rate)} <span class="rownote">n=${CH.int(sg.n)}</span>` : '--'}</td><td>${ns.n ? `${CH.pct(ns.linkage_rate)} <span class="rownote">n=${CH.int(ns.n)}</span>` : '--'}</td><td>${fmtHR(r.priors.literature_only)} → ${fmtHR(r.priors.registry_aware)} <span class="rownote">+${CH.int(r.priors.trials_added)} trials</span></td><td>${e.ran ? (e.intercept > 0 ? '+' : '') + CH.num(e.intercept) + (e.p_value != null && e.p_value < 0.05 ? ' *' : '') : '--'}</td></tr>`; }).join('')}
+  </tbody></table>` : '<p class="empty">No saved cohorts yet. Run any disease area above and it is kept.</p>'}
+  <p class="rownote">${CH.esc(overview.note || '')} Click a cohort to load it. * Egger p &lt; 0.05.</p>`;
+  document.querySelectorAll('[data-cohort]').forEach(b => b.onclick = () => {
+    $('#condition').value = b.dataset.cohort; $('#endpoint').value = b.dataset.endpoint; runDesign();
+  });
+}
+
+// --- Model spend ----------------------------------------------------------------
+
+async function loadLedger() {
+  try { ledger = await callJSON('/api/llm-ledger'); renderLedger(); }
+  catch (e) { const el = $('#ledgercard'); if (el) el.innerHTML = `<h3>10 · What the model layer cost</h3><p class="empty">${CH.esc(e.message)}</p>`; }
+}
+
+function renderLedger() {
+  const el = $('#ledgercard'); if (!el || !ledger) return;
+  const l = ledger, cache = l.cache || {}, budget = l.budget || {};
+  const usd = v => v == null ? '--' : '$' + Number(v).toFixed(v < 0.1 ? 4 : 2);
+  const purposes = Object.entries(l.by_purpose || {}).sort((a, b) => b[1].prompt_tokens + b[1].completion_tokens - a[1].prompt_tokens - a[1].completion_tokens);
+  const PURPOSE = {recover: 'Reading hazard ratios from full text', adjudicate: 'Judging whether a paper reports a trial', baseline_whole_paper: 'One whole paper, measured as the baseline', smoke: 'Connectivity check'};
+  el.innerHTML = `<h3>10 · What the model layer cost</h3>
+  <p class="vizsub">Every call ever made, from the ledger the client writes. Tokens are the API's own usage counts; prices are list prices for ${CH.esc((l.tiers || {}).small || '')} and ${CH.esc((l.tiers || {}).large || '')}.</p>
+  <div class="stats ledgerstats">
+    <div class="stat"><b>${usd(l.cost_usd)}</b><span><strong>Spent in total</strong><br>${CH.int(l.calls)} paid calls · ${CH.int(l.total_tokens)} tokens</span></div>
+    <div class="stat"><b>${usd(l.cost_usd_if_all_large_tier)}</b><span><strong>Same work at the larger tier</strong><br>what "small model first" avoided</span></div>
+    <div class="stat"><b>${CH.int(cache.hits_this_process)}</b><span><strong>Answered from cache</strong><br>${CH.int(cache.tokens_avoided_this_process)} tokens not re-sent this session</span></div>
+    <div class="stat"><b>${CH.int(budget.calls_this_process)} / ${CH.int(budget.max_calls)}</b><span><strong>Budget used</strong><br>hard cap on paid calls per process</span></div>
+  </div>
+  ${purposes.length ? hbar(purposes.map(([k, v]) => ({label: PURPOSE[k] || k, value: v.prompt_tokens + v.completion_tokens, display: CH.int(v.prompt_tokens + v.completion_tokens) + ' tokens', note: `${CH.int(v.calls)} calls · ${usd(v.cost_usd)}`, color: k === 'baseline_whole_paper' ? VIZ.context : VIZ.accent})), {title: 'tokens by purpose', labelWidth: 0}) : '<p class="empty">No model calls have been made yet.</p>'}
+  <p class="rownote">Four things keep this small: the model reads sentences, never papers; the smallest tier answers first and the larger one is consulted only when validation fails; identical requests are served from a disk cache; and a hard cap refuses rather than overspends.</p>`;
 }
 
 // --- Cascade: candidates for a trial with no identifier link ----------------
@@ -183,19 +266,50 @@ function renderCandidates() {
 
 // --- Free-text search over the index ---------------------------------------
 
+let searchFilters = {};
 async function runSearch() {
   if (!guard('runsearch', 'Searching the index…')) return;
-  try { searchResult = await callJSON('/api/search?' + new URLSearchParams({q: $('#q').value, size: 15})); renderSearch(); message(''); }
+  try {
+    const params = {q: $('#q').value, size: 15, kind: $('#kind') ? $('#kind').value : ''};
+    Object.entries(searchFilters).forEach(([k, v]) => { params[k] = String(v); });
+    searchResult = await callJSON('/api/search?' + new URLSearchParams(params)); renderSearch(); message('');
+  }
   catch (e) { message(e.message, true); }
   finally { release('runsearch'); }
 }
 
+const FACET_LABELS = {
+  has_publication: {title: 'Publication identified', values: {true: 'yes', false: 'no'}},
+  posted_hazard_ratio: {title: 'Posted a hazard ratio', values: {true: 'yes', false: 'no'}},
+  phases: {title: 'Phase', values: {PHASE1: '1', PHASE2: '2', PHASE3: '3', PHASE4: '4', EARLY_PHASE1: 'early 1', NA: 'n/a'}},
+  sponsor_class: {title: 'Sponsor', values: {INDUSTRY: 'industry', NIH: 'NIH', OTHER: 'other', OTHER_GOV: 'government', NETWORK: 'network', FED: 'federal'}},
+  is_retracted: {title: 'Retracted', values: {true: 'yes', false: 'no'}},
+};
+
+function facetBar(r) {
+  const f = r.facets || {};
+  const groups = Object.keys(FACET_LABELS).filter(k => (f[k] || []).length);
+  if (!groups.length) return '';
+  return `<div class="facets">${groups.map(k => `<div class="facetgroup"><span class="eyebrow">${CH.esc(FACET_LABELS[k].title)}</span>${f[k].map(b => {
+    const active = String((r.filters || {})[k]) === String(b.value);
+    return `<button class="facet${active ? ' active' : ''}" data-facet="${CH.esc(k)}" data-value="${CH.esc(String(b.value))}">${CH.esc(FACET_LABELS[k].values[String(b.value)] || String(b.value))} <b>${CH.int(b.count)}</b></button>`; }).join('')}</div>`).join('')}
+  ${Object.keys(r.filters || {}).length ? '<button class="facet clear" data-facet="" data-value="">× clear filters</button>' : ''}</div>`;
+}
+
 function renderSearch() {
   const r = searchResult;
-  $('#searchpanel').innerHTML = `<div class="sectionhead"><div><span class="eyebrow">EVIDENCE INDEX</span><h2>“${CH.esc(r.query)}”</h2></div><div class="sourcepill">● ${CH.int((r.index || {})['trialtrace-trials'])} trials · ${CH.int((r.index || {})['trialtrace-works'])} papers indexed</div></div>
+  $('#searchpanel').innerHTML = `<div class="sectionhead"><div><span class="eyebrow">EVIDENCE INDEX</span><h2>“${CH.esc(r.query)}”</h2></div><div class="sourcepill">● ${r.total != null ? CH.int(r.total) + ' matches in ' : ''}${CH.int((r.index || {})['trialtrace-trials'])} trials · ${CH.int((r.index || {})['trialtrace-works'])} papers indexed</div></div>
+  ${facetBar(r)}
   <div class="publist">${r.hits.map(h => { const isTrial = h._index && h._index.endsWith('trials'); const hl = h._highlight ? Object.values(h._highlight).flat()[0] : '';
     return `<button class="paperrow" data-open="${isTrial ? 'trial:' + CH.esc(h.nct_id) : 'doi:' + CH.esc(h.doi || '')}"><i style="background:${isTrial ? VIZ.good : VIZ.accent};flex-shrink:0"></i><div>${CH.esc(h.title)}<span>${isTrial ? CH.esc(h.nct_id) + ' · ' + CH.esc((h.phases || []).join('/')) : (h.journal ? CH.esc(h.journal) + ' · ' : '') + (h.year || '')} · score ${CH.num(h._score, 1)}</span>${hl ? `<span class="hl">${hl}</span>` : ''}</div></button>`; }).join('') || '<p class="empty">No hits.</p>'}</div>
-  <p class="rownote">Hits are keyword matches over titles, abstracts, conditions, interventions and authors; highlighted text shows what matched. This is the same retrieval that proposes candidates when a trial has no identifier link.</p>`;
+  <p class="rownote">Hits are keyword matches over titles, abstracts, conditions, interventions and authors; highlighted text shows what matched. The counts above are aggregations over every match, not only the page shown: search a drug and read off how many of its completed trials have a publication. This is the same retrieval that proposes candidates when a trial has no identifier link.</p>`;
+  document.querySelectorAll('[data-facet]').forEach(el => el.onclick = () => {
+    const k = el.dataset.facet, v = el.dataset.value;
+    if (!k) searchFilters = {};
+    else if (String(searchFilters[k]) === v) delete searchFilters[k];
+    else searchFilters[k] = v;
+    runSearch();
+  });
   document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
     const [kind, value] = el.dataset.open.split(/:(.+)/);
     if (kind === 'trial' && value) { $('#nct').value = value; setMode('trial'); runTrial(); }

@@ -18,8 +18,12 @@ try {
     function has(id, re){ return re.test(q(id).innerHTML); }
 
     OUT.push('initial_mode=' + mode);
-    OUT.push('start_sourcepanel_visible=' + (q('#sourcepanel').hidden === false));
+    OUT.push('start_designpanel_visible=' + (q('#designpanel').hidden === false));
     OUT.push('start_workspace_hidden=' + (q('#workspace').hidden === true));
+    OUT.push('start_sourcepanel_hidden=' + (q('#sourcepanel').hidden === true));
+
+    q('#modesources').onclick();
+    OUT.push('sources_mode_switch=' + (mode === 'sources' && q('#sourcepanel').hidden === false));
 
     sources = FIX.sources; renderSources();
     OUT.push('sources_rendered=' + (q('#sourcepanel').innerHTML.length > 500));
@@ -55,6 +59,21 @@ try {
     OUT.push('design_has_backtest=' + has('#designpanel', /Coverage/));
     OUT.push('design_has_sensitivity=' + has('#designpanel', /unknown trials|neither a publication/));
     OUT.push('design_no_undefined=' + (has('#designpanel', /undefined|NaN/) === false));
+    OUT.push('design_has_funnel=' + has('#designpanel', /class="chart funnel"/));
+    OUT.push('design_funnel_has_points=' + ((q('#designpanel').innerHTML.match(/<circle cx=/g) || []).length > 20));
+    OUT.push('design_has_egger=' + has('#designpanel', /Egger/));
+    OUT.push('design_names_provenance=' + has('#designpanel', /registrations from ClinicalTrials\\.gov/));
+    OUT.push('design_has_participants=' + has('#designpanel', /<th>Participants<\\/th>/));
+    OUT.push('design_has_lazy_cards=' + (has('#designpanel', /id="overviewcard"/) && has('#designpanel', /id="ledgercard"/)));
+    overview = FIX.overview; renderOverview();
+    OUT.push('overview_lists_cohorts=' + ((q('#overviewcard').innerHTML.match(/data-cohort=/g) || []).length >= 2));
+    OUT.push('overview_states_pattern=' + has('#overviewcard', /more often in \\d+ of \\d+ cohorts/));
+    OUT.push('overview_no_undefined=' + (has('#overviewcard', /undefined|NaN/) === false));
+    ledger = FIX.ledger; renderLedger();
+    OUT.push('ledger_shows_dollars=' + has('#ledgercard', /\\$\\d/));
+    OUT.push('ledger_shows_counterfactual=' + has('#ledgercard', /Same work at the larger tier/));
+    OUT.push('ledger_has_purpose_bars=' + has('#ledgercard', /tokens by purpose/));
+    OUT.push('ledger_no_undefined=' + (has('#ledgercard', /undefined|NaN/) === false));
 
     q('#modereviewer').onclick();
     OUT.push('reviewer_mode=' + (mode === 'reviewer'));
@@ -96,6 +115,9 @@ try {
     searchResult = FIX.search; renderSearch();
     OUT.push('search_has_hits=' + ((q('#searchpanel').innerHTML.match(/data-open=/g) || []).length > 3));
     OUT.push('search_shows_index_size=' + has('#searchpanel', /papers indexed/));
+    OUT.push('search_has_facets=' + has('#searchpanel', /class="facets"/));
+    OUT.push('search_facet_publication=' + has('#searchpanel', /Publication identified/));
+    OUT.push('search_shows_total=' + has('#searchpanel', /\\d+ matches in/));
     OUT.push('search_no_undefined=' + (has('#searchpanel', /undefined|NaN/) === false));
 
     q('#modesources').onclick();
@@ -111,6 +133,8 @@ try {
     trial: JSON.parse(read(F + 'trial.json')),
     candidates: JSON.parse(read(F + 'candidates.json')),
     search: JSON.parse(read(F + 'search.json')),
+    overview: JSON.parse(read(F + 'overview.json')),
+    ledger: JSON.parse(read(F + 'ledger.json')),
   }, []);
 } catch (e) {
   out.push('THREW=' + (e && e.message));

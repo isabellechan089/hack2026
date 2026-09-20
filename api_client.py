@@ -9,6 +9,18 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 CACHE = Path(__file__).parent / '.cache'
+
+# One pooled session for the whole process. The citation graph and reference
+# screen fan out over a thread pool, and opening a fresh TLS connection per
+# call was the largest fixed cost in every uncached lookup.
+_SESSION = requests.Session()
+_SESSION.mount('https://', HTTPAdapter(
+    pool_connections=8, pool_maxsize=16,
+    max_retries=Retry(total=2, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504],
+                      respect_retry_after_header=False)))
+_SESSION.headers['User-Agent'] = 'EvidenceAtlas-Hackathon/1.0'
+
+
 def fetch(url, params=None):
     params = dict(params or {})
     key = hashlib.sha256(json.dumps([url, params], sort_keys=True).encode()).hexdigest()
@@ -17,10 +29,7 @@ def fetch(url, params=None):
         return json.loads(path.read_text())
     if 'api.openalex.org' in url and os.getenv('OPENALEX_API_KEY'):
         params['api_key'] = os.environ['OPENALEX_API_KEY']
-    session = requests.Session()
-    session.mount('https://', HTTPAdapter(max_retries=Retry(total=2, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504], respect_retry_after_header=False)))
-    with session:
-        response = session.get(url, params=params, timeout=(5, 15), headers={'User-Agent': 'EvidenceAtlas-Hackathon/1.0'})
+    response = _SESSION.get(url, params=params, timeout=(5, 15))
     response.raise_for_status()
     result = response.json()
     CACHE.mkdir(exist_ok=True)

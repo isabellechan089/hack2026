@@ -126,3 +126,51 @@ function linechart(points, opts = {}) {
   return out + `<text x="0" y="${h - 1}" font-size="5" fill="${VIZ.muted}">${CH.esc(opts.xlo || '')}</text>`
     + `<text x="100" y="${h - 1}" font-size="5" fill="${VIZ.muted}" text-anchor="end">${CH.esc(opts.xhi || '')}</text></svg>`;
 }
+
+/** Funnel plot: one trial per point, effect against precision, on a log-HR axis.
+ *  f: the backend `funnel` block. Two series only (published, registry-only);
+ *  the pair #4a7fb5 / #d9722c passes every validator check under --pairs all. */
+function funnelplot(f, opts = {}) {
+  const pts = (f && f.points) || [];
+  if (!pts.length) return '<p class="empty">No poolable hazard ratios to plot.</p>';
+  const W = 100, H = 64, padL = 3, padR = 3, padT = 4, padB = 9;
+  const logs = pts.map(p => p.log_hr);
+  const bounds = f.bounds || [];
+  const lo = Math.min(...logs, ...bounds.map(b => Math.log(b.lower)), Math.log(0.5)) - 0.08;
+  const hi = Math.max(...logs, ...bounds.map(b => Math.log(b.upper)), Math.log(1.5)) + 0.08;
+  const maxSe = Math.max(...pts.map(p => p.standard_error)) * 1.06;
+  const X = v => padL + (v - lo) / (hi - lo) * (W - padL - padR);
+  const Y = se => padT + se / maxSe * (H - padT - padB);
+  const centre = f.pooled_log_hr;
+  const colorFor = p => p.category === 'registry_only_with_result' ? VIZ.accent : VIZ.published;
+  let out = `<svg class="chart funnel" viewBox="0 0 ${W} ${H}" role="img" aria-label="${CH.esc(opts.title || 'funnel plot')}" preserveAspectRatio="none">`;
+  // Pseudo 95% region around the pooled estimate: a wedge from the apex down.
+  if (centre != null && bounds.length) {
+    const left = bounds.map(b => `${X(Math.log(b.lower)).toFixed(2)},${Y(b.se).toFixed(2)}`);
+    const right = bounds.map(b => `${X(Math.log(b.upper)).toFixed(2)},${Y(b.se).toFixed(2)}`).reverse();
+    out += `<polygon points="${X(centre).toFixed(2)},${Y(0).toFixed(2)} ${left.join(' ')} ${right.join(' ')}" fill="${VIZ.grid}" opacity=".45"/>`
+      + `<line x1="${X(centre)}" y1="${Y(0)}" x2="${X(centre)}" y2="${H - padB}" stroke="${VIZ.muted}" stroke-width="0.5" stroke-dasharray="1.5 1.5"/>`;
+  }
+  // The null: no difference between arms.
+  if (lo < 0 && hi > 0) out += `<line x1="${X(0)}" y1="${padT}" x2="${X(0)}" y2="${H - padB}" stroke="${VIZ.ink}" stroke-width="0.5" opacity=".5"/>`;
+  out += `<line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="${VIZ.grid}" stroke-width="0.5"/>`;
+  // Registry-only points are drawn last so they sit on top: they are the ones the reader is looking for.
+  const ordered = pts.slice().sort((a, b) => (a.category === 'registry_only_with_result') - (b.category === 'registry_only_with_result'));
+  ordered.forEach(p => {
+    out += `<g><title>${CH.esc(p.nct_id)} · ${CH.esc(p.category === 'registry_only_with_result' ? 'registry result, no publication identified' : 'published, with a result')}\nHR ${CH.num(p.hazard_ratio)} (95% CI ${CH.num(p.ci_lower)}–${CH.num(p.ci_upper)}) · SE ${CH.num(p.standard_error, 3)}${p.enrollment ? ` · ${CH.int(p.enrollment)} enrolled` : ''}\n${CH.esc(p.title || '')}</title>`
+      + `<circle cx="${X(p.log_hr).toFixed(2)}" cy="${Y(p.standard_error).toFixed(2)}" r="1.7" fill="${colorFor(p)}" stroke="${VIZ.surface}" stroke-width="0.6"/></g>`;
+  });
+  [0.25, 0.5, 1, 2].forEach(t => {
+    const v = Math.log(t);
+    if (v >= lo && v <= hi) out += `<text x="${X(v)}" y="${H - 2}" font-size="4.5" fill="${VIZ.muted}" text-anchor="middle">${t === 1 ? 'HR 1' : t}</text>`;
+  });
+  out += `<text x="${padL}" y="${padT + 3}" font-size="4" fill="${VIZ.muted}">precise ↑</text>`
+    + `<text x="${padL}" y="${H - padB - 1.5}" font-size="4" fill="${VIZ.muted}">imprecise ↓</text></svg>`;
+  const nA = pts.filter(p => p.category !== 'registry_only_with_result').length, nB = pts.length - nA;
+  out += '<div class="chartlabels">'
+    + `<div class="chartrow"><span class="chip" style="background:${VIZ.published}"></span><span class="rowlabel">Published, with a result</span><b>${CH.int(nA)}</b></div>`
+    + `<div class="chartrow"><span class="chip" style="background:${VIZ.accent}"></span><span class="rowlabel">Registry result, no publication identified</span><b>${CH.int(nB)}</b></div>`
+    + `<div class="chartrow"><span class="chip" style="background:${VIZ.grid}"></span><span class="rowlabel">Pseudo 95% region around the registry-aware pooled estimate${centre != null ? ` (HR ${CH.num(Math.exp(centre))})` : ''}</span></div>`
+    + '</div>';
+  return out;
+}

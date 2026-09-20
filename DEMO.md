@@ -9,12 +9,17 @@ and here is how far that goes.*
    refuses to overwrite them if the seed retraction cannot be confirmed, so a
    clean run is your green light.
 2. `venv/bin/python main.py`, open http://127.0.0.1:8000.
-3. The app opens in **Check my sources** with the saved example. Click through
-   once so the browser has it warm.
+3. The app opens in **Bias-aware design** on the saved lung-cancer cohort.
+   Switch to **Check my sources** once so the saved example is warm too.
 4. Use a wide window — the graph and evidence panel sit side by side above
    1000px.
 5. Both modes work from saved snapshots with no network. Never present a
    snapshot as a fresh live lookup; the panel labels which it is.
+
+Two ways to run the story. The retraction-first version below is the one that
+lands with a general audience; for Regeneron, open on the design view and give
+the last section first, then the funnel plot ("Where the missing trials sit")
+and the ten-cohort table ("Does it repeat in other disease areas?").
 
 ## 0:00–0:20 — The question researchers actually have
 
@@ -49,7 +54,7 @@ citation path back to the retraction, one clickable step at a time.
 
 ## 1:15–1:40 — Why it is trustworthy
 
-“Orange cites the retracted work directly, yellow connects through another
+“Orange cites the retracted work directly, blue connects through another
 paper. A citation is a reason to look, not a verdict — a paper may be citing the
 retraction itself.”
 
@@ -68,9 +73,14 @@ worked are published 92% of the time; trials that did not, 62%. Correct for
 that and the pooled hazard ratio moves from 0.76 to 0.80 — and a trial you
 sized for 80% power actually delivers 32%.”
 
-Scroll to the back-test: “and this is the part that matters — out of sample, the
-literature-only model is systematically optimistic, the registry-aware one is
-close to unbiased.”
+Scroll to the funnel plot: “every trial by its effect and its precision. The
+orange ones, the results that never reached a paper, sit in the corner the
+literature is missing: small and unimpressive. Egger's test puts a number on
+it.” Then the back-test: “out of sample, the literature-only model is
+systematically optimistic, the registry-aware one is close to unbiased.” Then
+the ten-cohort table: “and it is not a lung-cancer quirk. In all ten cohorts
+significant trials were linked more often; in nine of ten the correction moved
+the prior toward the null.”
 
 If asked where the AI is: tick **Read open full text** and point at section 7.
 “The model reads only the sentences that could carry a hazard ratio — 13
@@ -79,6 +89,10 @@ sentence it came from. Then in Trial ↔ paper, *Search for unlinked
 publications*: it retrieved six look-alikes for this trial, and the model
 rejected all six, naming the design mismatch each time. A metadata score alone
 is never allowed to accept.”
+
+If asked what the AI cost: scroll to the last card. “Four tenths of a cent so
+far, measured from the API's own usage counts. The same work at the next tier
+up would have been four times that.”
 
 ## If asked about AI
 

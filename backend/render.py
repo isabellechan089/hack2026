@@ -95,6 +95,30 @@ def render(report: Dict[str, Any]) -> str:
     out.append(wrap(priors["interpretation"]))
     out.append(wrap(DIM + priors["caveat"] + RESET))
 
+    # --- Where the missing trials sit
+    fun = report.get("funnel") or {}
+    egger = fun.get("egger") or {}
+    if fun.get("k"):
+        out.append("")
+        out.append(BOLD + "2b. WHERE THE MISSING TRIALS SIT" + RESET)
+        out.append(rule())
+        out.append("  {:<26} {:>7} {:>18} {:>10}".format("EGGER'S TEST", "TRIALS", "INTERCEPT", "P"))
+        for key, label in (("literature_only", "Literature-only"), ("registry_aware", "Registry-aware")):
+            block = egger.get(key) or {}
+            if not block.get("ran"):
+                out.append("  {:<26} {:>7} {:>18}".format(label, block.get("k", 0), "--"))
+                continue
+            out.append("  {:<26} {:>7} {:>18} {:>10}".format(
+                label, block["k"],
+                "{:+.2f} ± {:.2f}".format(block["intercept"], block["intercept_se"]),
+                "<0.001" if block["p_value"] < 0.001 else "{:.3f}".format(block["p_value"])))
+        lit_note = (egger.get("literature_only") or {}).get("note")
+        if lit_note:
+            out.append(wrap(lit_note))
+        placement = fun.get("placement") or {}
+        if placement.get("note"):
+            out.append(wrap(DIM + placement["note"] + RESET))
+
     # --- Act 3b: the design consequence
     design = report["design"]
     out.append("")

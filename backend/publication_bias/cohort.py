@@ -140,7 +140,25 @@ def describe(cohort: Cohort) -> Dict[str, Any]:
 
     linked = sum(1 for item in cohort.trials if item.has_publication)
     with_effect = len(cohort.with_effect())
+    # Provenance counts: which sources the cohort actually drew on, so a reader
+    # can see how much of the scholarly graph was reachable.
+    pmids = {link.pmid for item in cohort.trials for link in item.links if link.pmid}
+    openalex_resolved = {link.pmid for item in cohort.trials for link in item.links
+                         if link.pmid and link.openalex_id}
+    retracted = {link.pmid for item in cohort.trials for link in item.links
+                 if link.pmid and link.is_retracted}
+    channels: Dict[str, int] = {}
+    for item in cohort.trials:
+        for link in item.links:
+            channels[link.match_method] = channels.get(link.match_method, 0) + 1
     return {
+        "sources": {
+            "registry_trials": len(cohort.trials),
+            "publications_linked": len(pmids),
+            "openalex_resolved": len(openalex_resolved),
+            "retracted_publications": len(retracted),
+            "links_by_channel": channels,
+        },
         "condition": cohort.condition,
         "endpoint_class": cohort.endpoint_class,
         "phases": cohort.phases,
