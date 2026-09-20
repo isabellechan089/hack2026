@@ -27,7 +27,9 @@ $('#searchlabel').textContent=tracing?'START WITH A PAPER':'PASTE A PAPER YOU AR
 $('#explore').innerHTML=(tracing?'Trace evidence':'Check references')+' <span>↗</span>';
 $('#searchsources').textContent=tracing?'OpenAlex citation metadata + Crossref update notices':'Screens every work this paper cites against OpenAlex and Crossref retraction notices';
 message('');
-if(tracing&&!data)setMode('sources');if(!tracing&&!sources)checkSources()}
+// A mode switch loads that mode's data once; the saved snapshot is used so
+// the first view never depends on a live lookup.
+if(tracing&&!data)load(true);if(!tracing&&!sources)checkSources(true)}
 $('#modetrace').onclick=()=>setMode('trace');$('#modesources').onclick=()=>setMode('sources');
 $('#search').onsubmit=e=>{e.preventDefault();mode==='trace'?load():checkSources()};$('#demo').onclick=()=>setMode('sources');$('#filter').onchange=draw;$('#find').oninput=draw;
 async function checkSources(demo=false){if(busy)return;busy=true;$('#explore').disabled=true;$('#demo').disabled=true;
