@@ -77,14 +77,29 @@ First run builds the cohort from live APIs and takes about 4 minutes; every
 response is cached, so later runs are seconds. `--save` writes the cohort to
 `data/cohorts/`.
 
-### Research integrity — retraction blast radius
+### Research integrity — the web app
 
 ```sh
 venv/bin/python main.py       # then open http://127.0.0.1:8000
 ```
 
-Enter a DOI, get a sampled citation network with source-linked retraction
-evidence and a shortest path from any paper back to the retracted work.
+Two modes over one graph.
+
+**Check my sources** — paste a paper you are citing, writing or reviewing. Every
+work it cites is screened for retraction notices. On the bundled example, a
+*Nature Reviews Clinical Oncology* review with 182 references, one retracted
+reference is found in about half a second. Flagged entries show the notice, its
+date and its source, linked so anyone can verify it. A clean result is reported
+as "nothing found by this screen", never as a clean bill of health.
+
+**Trace citations forward** — the blast radius of a retracted paper. Direct
+citers, downstream descendants, weighted citation mass, and how many cite it
+*after* the retraction date. Any node can be made the new starting paper, or
+handed to the source check, so a chain can be followed in either direction for
+as long as it goes.
+
+Sampling is stated on screen ("showing 20 of 52 direct citations") rather than
+implied away, and breadth is adjustable from the search bar.
 
 ### Reviewer conflict check
 
@@ -99,7 +114,7 @@ venv/bin/python cli.py reviewer --reviewer "Martin Reck" \
 venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-63 tests, all offline. The statistics are checked against closed-form values
+74 tests, all offline. The statistics are checked against closed-form values
 (Schoenfeld event counts, DerSimonian-Laird pooling) and against synthetic data
 with a known answer, so a regression in the maths fails a test rather than
 producing a plausible-looking number.
@@ -190,8 +205,9 @@ venv/bin/python main.py
 | `GET /api/design?condition=&endpoint=&hr=&alpha=&power=` | The full bias-aware design report |
 | `GET /api/cohort?condition=&endpoint=` | Cohort composition and linkage counts |
 | `POST /api/reviewer-conflict` | Conflict paths with evidence |
-| `GET /api/graph?doi=&depth=1\|2` | Citation graph, retraction evidence, blast radius |
-| `GET /api/demo` | Bundled citation-graph snapshot |
+| `GET /api/sources?doi=&deep=1` | Screen a paper's whole reference list for retractions |
+| `GET /api/graph?doi=&depth=1\|2&limit=` | Citation graph, retraction evidence, blast radius |
+| `GET /api/demo` · `/api/demo-sources` | Bundled snapshots, for offline demos |
 | `GET /api/trial?nct=` · `/api/paper?pmid=` · `/api/compare?nct=&pmid=` | Registered-vs-published comparison |
 
 ```sh
@@ -225,6 +241,7 @@ backend/
 cli.py                design | cohort | reviewer | trial | paper | compare
 main.py               HTTP server + static UI
 graph.py              citation graph, exposure BFS, blast_radius
+retraction_check.py   screen a paper's own reference list
 static/               SVG citation graph UI
 data/cohorts/         saved cohorts      data/demo.json  saved graph snapshot
 tests/                63 offline tests
@@ -242,7 +259,10 @@ Stated plainly so the gaps are not mistaken for claims:
 - **No LLM adjudication.** The middle-confidence branch of the matching cascade
   falls through to "no link identified" rather than to a cheap model.
 - **No web UI for the hero feature.** Bias-aware design is CLI and API only; the
-  browser UI covers the citation/retraction graph.
+  browser UI covers reference checking and the citation/retraction graph.
+- **The reference screen leans on OpenAlex.** Only entries OpenAlex flags are
+  confirmed against Crossref, so an unflagged reference was not individually
+  checked. `deep=1` checks every one, at roughly a hundred times the API calls.
 - **One disease area, one endpoint class at a time.** Widening this is a cohort
   parameter, not new code, but nothing cross-disease has been validated.
 - **Fuzzy matching is not used in cohort construction.** Only the two identifier

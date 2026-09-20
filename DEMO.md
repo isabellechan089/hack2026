@@ -1,44 +1,83 @@
 # Evidence Atlas — two-minute demo
 
+The demo tells one story: *a paper you trust cites something that was retracted,
+and here is how far that goes.*
+
 ## Before presenting
 
-1. Start `venv/bin/python main.py` and open http://127.0.0.1:8000.
-2. Click **Load saved example**. Keep the saved snapshot for the presentation; live APIs are optional.
-3. Use a wide browser window so the graph and evidence panel appear side by side.
-4. Confirm the seed has a linked retraction notice. Read the displayed counts; don't imply this is the entire citation network.
+1. `venv/bin/python capture_demo.py` — refreshes both saved snapshots. It
+   refuses to overwrite them if the seed retraction cannot be confirmed, so a
+   clean run is your green light.
+2. `venv/bin/python main.py`, open http://127.0.0.1:8000.
+3. The app opens in **Check my sources** with the saved example. Click through
+   once so the browser has it warm.
+4. Use a wide window — the graph and evidence panel sit side by side above
+   1000px.
+5. Both modes work from saved snapshots with no network. Never present a
+   snapshot as a fresh live lookup; the panel labels which it is.
 
-## 0:00–0:20 — The problem
+## 0:00–0:20 — The question researchers actually have
 
-“Research papers don't exist in isolation. When a paper is retracted, researchers need to understand where it appears in the evidence trail. Evidence Atlas makes those connections visible and inspectable.”
+“Every paper rests on its references. When one of those is retracted, nobody
+tells you. This checks.”
 
-## 0:20–0:45 — The real example
+Paste a DOI, or use the loaded example: a *Nature Reviews Clinical Oncology*
+review with 182 references.
 
-“This is a real osteosarcoma paper, retrieved through OpenAlex. The red starting node has a retraction notice. We show the source and link directly to the notice, so you can verify the evidence yourself.”
+## 0:20–0:45 — The answer, with evidence
 
-Point to the starting paper's update evidence and the dated Crossref notice. The snapshot contains 40 papers and 40 citation links: one confirmed retracted seed, eight direct connections, and 31 indirect connections.
+“One of the 179 references we could resolve has been retracted.”
 
-## 0:45–1:15 — Follow the trail
+Point at the verdict, then the flagged card: the retraction notice, dated
+2023-04-22, confirmed by Retraction Watch *and* the publisher, linked so anyone
+can check it.
 
-Click a yellow outer-ring node, or switch to **Papers** and choose an indirect connection.
+Note the coverage line: 179 of 182 resolved, and what the screen did and did not
+check. The tool does not claim the other 178 are clean — only that nothing was
+found.
 
-“Orange papers directly cite a retracted work; yellow papers connect through another paper. Selecting a paper reveals a shortest citation path back to the retraction. Every step is inspectable.”
+## 0:45–1:15 — How far did it spread?
 
-Click a path step to navigate. Explain that arrows point from the citing paper to the cited paper.
+Click **See how far this spread →** on the flagged card. That re-centres the
+citation graph on the retracted paper.
 
-## 1:15–1:40 — What makes the result useful
+“20 of its 52 direct citations are shown, and 66 of the connected papers were
+published *after* the retraction notice appeared.”
 
-“We keep a paper's own retraction status separate from its citation connections. A connection is a reason to investigate, not a claim that a paper is invalid. Unknown checks remain unknown, and we disclose the sample limits.”
+Point at the stat tile. Then select an outer node: the panel shows a shortest
+citation path back to the retraction, one clickable step at a time.
 
-Show the graph filter, paper search, and the source/coverage section. Export evidence JSON if helpful.
+## 1:15–1:40 — Why it is trustworthy
 
-## 1:40–2:00 — The product and broader vision
+“Orange cites the retracted work directly, yellow connects through another
+paper. A citation is a reason to look, not a verdict — a paper may be citing the
+retraction itself.”
 
-“You can enter another DOI to explore its citation neighborhood. The underlying graph is also designed to connect to trial–publication comparisons and researcher relationships. Today we have a complete, source-linked citation provenance workflow with a saved demo that doesn't depend on live API availability.”
+Show **Make this the starting paper** to continue the chain from any node, and
+**Check this paper's own references** to jump back the other way.
+
+Mention the sampling honestly: “showing 20 of 52” is on screen, not buried.
+
+## 1:40–2:00 — The bigger product
+
+“The same registry-and-literature graph powers our main feature: measuring
+publication bias and correcting the effect sizes people use to design trials.”
+
+If there is time, drop to a terminal:
+
+```sh
+venv/bin/python cli.py design --condition "non-small cell lung cancer" --endpoint pfs --hr 0.65
+```
+
+Runs in about a second from the saved cohort.
 
 ## If asked about AI
 
-“The graph paths are deterministic. We don't use an LLM to invent connections or assign credibility scores. A future extraction module can compare reported trial outcomes with registered plans and attach cited evidence to this graph.”
+“No language model is in this path. Citation structure, retraction status,
+graph distances and the statistics are all computed. An LLM would be for
+normalising endpoint wording, not for deciding what is retracted.”
 
 ## If live retrieval fails
 
-Click **Load saved example**. Explain that the clearly labeled snapshot contains real previously fetched metadata. Never present it as a fresh live lookup.
+Click **Load saved example** in either mode. Say plainly that it is a saved
+snapshot of real previously fetched metadata.

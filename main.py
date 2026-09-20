@@ -6,6 +6,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from graph import build_graph
 from api_client import normalize_doi
+from retraction_check import check_sources
 from backend.report import comparison_report, paper_report, trial_report
 from backend.publication_bias.analysis import analyze
 from backend.publication_bias.cohort import build_cohort
@@ -26,11 +27,21 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == '/api/demo':
-            path = ROOT / 'data/demo.json'
+        if parsed.path in ('/api/demo', '/api/demo-sources'):
+            name = 'demo.json' if parsed.path == '/api/demo' else 'demo_sources.json'
+            path = ROOT / 'data' / name
             if not path.exists():
-                return self.reply({'error': 'Demo snapshot is not available.'}, 503)
+                return self.reply({'error': 'Saved snapshot is not available. Run capture_demo.py.'}, 503)
             return self.reply(json.loads(path.read_text()))
+        if parsed.path == '/api/sources':
+            query = parse_qs(parsed.query)
+            try:
+                doi = normalize_doi(query.get('doi', [''])[0])
+                return self.reply(check_sources(doi, deep=query.get('deep', [''])[0] == '1'))
+            except ValueError as error:
+                return self.reply({'error': str(error)}, 400)
+            except Exception:
+                return self.reply({'error': 'This reference list could not be retrieved. Check the DOI, or try the saved demo.'}, 502)
         if parsed.path == '/api/graph':
             query = parse_qs(parsed.query)
             try:
@@ -38,7 +49,9 @@ class Handler(SimpleHTTPRequestHandler):
                 depth = int(query.get('depth', ['2'])[0])
                 if depth not in (1, 2):
                     raise ValueError('Choose one or two citation hops.')
-                return self.reply(build_graph(doi, depth))
+                limit = max(5, min(50, int(query.get('limit', ['20'])[0])))
+                return self.reply(build_graph(doi, depth, limit=limit,
+                                              per_branch=max(2, min(10, limit // 4))))
             except ValueError as error:
                 return self.reply({'error': str(error)}, 400)
             except Exception:
