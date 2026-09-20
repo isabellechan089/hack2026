@@ -181,3 +181,31 @@ class TestPublicationRole(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestReportLayer(unittest.TestCase):
+    """The CLI and the HTTP API are both built from backend.report."""
+
+    def _patched_report(self, nct_id, pmid):
+        from unittest.mock import patch
+
+        import backend.report as report
+
+        trial, paper = load_trial(nct_id), load_paper(pmid)
+        with patch.object(report.clinical_trials, "get_trial", return_value=trial), patch.object(
+            report.pubmed, "get_paper_by_pmid", return_value=paper
+        ):
+            return report.comparison_report(nct_id, pmid)
+
+    def test_comparison_report_is_json_serializable(self):
+        payload = self._patched_report("NCT02506153", "36416836")
+        json.dumps(payload)  # the HTTP layer serializes this directly
+        self.assertEqual(payload["trial"]["nct_id"], "NCT02506153")
+        self.assertEqual(payload["match"]["basis"], "identifier")
+        self.assertIn("counts", payload["comparison"])
+        self.assertTrue(payload["role_label"])
+
+    def test_report_keeps_source_links(self):
+        payload = self._patched_report("NCT02506153", "36416836")
+        self.assertIn("clinicaltrials.gov", payload["trial"]["url"])
+        self.assertTrue(all(item["url"] for item in payload["comparison"]["provenance"]))

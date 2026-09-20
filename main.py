@@ -6,6 +6,9 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from graph import build_graph
 from api_client import normalize_doi
+from backend.report import comparison_report, paper_report, trial_report
+from backend.sources.clinical_trials import looks_like_nct_id
+from backend.sources.http import SourceError
 ROOT = Path(__file__).parent
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -37,6 +40,26 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply({'error': str(error)}, 400)
             except Exception:
                 return self.reply({'error': 'The metadata provider could not complete this lookup. Check your connection or OPENALEX_API_KEY, or use the saved demo.'}, 502)
+        if parsed.path in ('/api/trial', '/api/paper', '/api/compare'):
+            query = parse_qs(parsed.query)
+            try:
+                if parsed.path == '/api/trial':
+                    nct = (query.get('nct', [''])[0] or '').strip().upper()
+                    if not looks_like_nct_id(nct):
+                        raise ValueError('Enter a registry identifier such as NCT02142738.')
+                    return self.reply(trial_report(nct, limit=int(query.get('limit', ['8'])[0])))
+                if parsed.path == '/api/paper':
+                    return self.reply(paper_report(query.get('pmid', [''])[0].strip()))
+                nct = (query.get('nct', [''])[0] or '').strip().upper()
+                if not looks_like_nct_id(nct):
+                    raise ValueError('Enter a registry identifier such as NCT02142738.')
+                return self.reply(comparison_report(nct, query.get('pmid', [''])[0].strip()))
+            except ValueError as error:
+                return self.reply({'error': str(error)}, 400)
+            except SourceError:
+                return self.reply({'error': 'ClinicalTrials.gov or PubMed could not complete this lookup. Try again shortly.'}, 502)
+            except Exception:
+                return self.reply({'error': 'This registry lookup could not be completed.'}, 502)
         if parsed.path.startswith('/api/'):
             return self.reply({'error': 'Not found'}, 404)
         super().do_GET()
