@@ -4,7 +4,7 @@
 literature — but published literature is missing some of the trials that were
 registered and completed.**
 
-TrialTrace links the trial registry to the scholarly record, measures that gap,
+EvidenceAtlas links the trial registry to the scholarly record, measures that gap,
 and shows what it does to a trial design. The same graph also powers retraction
 propagation and reviewer-conflict analysis.
 
