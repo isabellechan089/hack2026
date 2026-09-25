@@ -1,4 +1,4 @@
-# TrialTrace
+# EvidenceAtlas
 
 **The effect sizes people use to design clinical trials come from published
 literature — but published literature is missing some of the trials that were
